@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Notly — Ders Videosu & Sekme Sesi Özetleyici",
+  "version": "0.1.0",
+  "description": "Okul sitelerindeki (Moodle, Canvas vb.) indirilemeyen videoları ve YouTube derslerini dinler, slaytları yakalar ve sınav notu çıkarır.",
+  "permissions": [
+    "tabCapture",
+    "offscreen",
+    "sidePanel",
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Notly Yan Panelini Aç"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
+}

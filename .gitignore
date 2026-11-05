@@ -1,0 +1,13 @@
+# Gizli anahtarlar (ASLA GitHub'a yuklenmez!)
+.env
+.env.local
+
+# Yuklenen paketler ve derleme ciktilari
+node_modules/
+dist/
+.vite/
+
+# Isletim sistemi ve editör dosyalari
+.DS_Store
+Thumbs.db
+*.log

@@ -1,0 +1,24 @@
+{
+  "name": "notly",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ses ve Videodan Akilli Ders Notu ve Ozet Cikaran Uygulama (Web + Chrome Eklentisi + Gizli Kopru Sunucu)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "tsx sunucu/server.ts",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}

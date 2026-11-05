@@ -1,0 +1,18 @@
+{
+  "name": "Notly - Ses ve Videodan Akıllı Ders Notu",
+  "short_name": "Notly",
+  "description": "Ses, WhatsApp sesli mesajı ve ders videolarından saniyeler içinde özet ve sınav notu çıkarın.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "share_target": {
+    "action": "/?shared=1",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}
