@@ -79,6 +79,13 @@ export const CEVIRILER = {
     noHistoryText: 'Henüz bir özet çıkarmadın. Yukarıdan örnek bir dersle hemen dene!',
     costSavedBadge: 'Tasarruf Motoru Aktif',
     quotaExceededError: 'Günlük ücretsiz 3 özet hakkın doldu. Yarın sıfırlanacak veya Pro pakete geçebilirsin.',
+    buyCoffeeBtn: '☕ Destek Ol',
+    upgradeProBtn: '⚡ Pro Sınırsız',
+    proModalTitle: '⚡ Notly Pro — Sınırsız Ders ve Ses Özeti',
+    proModalSubtitle: 'Günde 3 özet sınırını kaldır; 2-3 saatlik uzun sınav kayıtlarını, otomatik sınav tahminlerini ve sınırsız PDF ders notunu aç.',
+    proPriceText: 'Aylık 99 ₺ (Öğrenci İndirimi) veya $3.99 / ay',
+    coffeeModalTitle: '☕ Notly Geliştiricisine Bir Kahve Ismarla',
+    coffeeModalSubtitle: 'Notly bağımsız bir öğrenci projesidir. Sunucu ve yapay zeka altyapı masraflarına katkıda bulunmak istersen dilediğin tutarda destek olabilirsin!',
   },
   en: {
     appTagline: 'Instant Smart Notes from Audio, WhatsApp Voice & Lecture Videos',
@@ -113,6 +120,13 @@ export const CEVIRILER = {
     noHistoryText: 'No summaries yet. Try a sample lecture above!',
     costSavedBadge: 'Savings Engine Active',
     quotaExceededError: 'Your 3 free daily summaries are used up. Resets tomorrow or upgrade to Pro.',
+    buyCoffeeBtn: '☕ Buy Coffee',
+    upgradeProBtn: '⚡ Go Pro',
+    proModalTitle: '⚡ Notly Pro — Unlimited Lecture & Voice Notes',
+    proModalSubtitle: 'Lift the 3/day quota. Unlock 2-3 hour long midterm recordings, auto exam prep questions, and unlimited PDF lecture exports.',
+    proPriceText: '$3.99 / month (Special Student Rate) or 99 ₺',
+    coffeeModalTitle: '☕ Support the Student Creator',
+    coffeeModalSubtitle: 'Notly is an independent student project. If it helped you save time in class, support the server & API costs with a coffee!',
   },
 } as const;
 

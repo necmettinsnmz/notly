@@ -38,6 +38,8 @@ interface UygulamaDurumu {
   kalanKota: number;
   kotaLimiti: number;
   devPanelAcik: boolean;
+  proModalAcik: boolean;
+  coffeeModalAcik: boolean;
   kayitYapiliyor: boolean;
   sunucuDurumu: {
     modeLabel: string;
@@ -110,6 +112,8 @@ const state: UygulamaDurumu = {
   kalanKota: APP_CONFIG.dailyFreeLimit,
   kotaLimiti: APP_CONFIG.dailyFreeLimit,
   devPanelAcik: false,
+  proModalAcik: false,
+  coffeeModalAcik: false,
   kayitYapiliyor: false,
   sunucuDurumu: {
     modeLabel: 'Yükleniyor...',
@@ -455,11 +459,56 @@ function render(): void {
           <span class="badge badge-accent">
             🎟️ ${t(state.dil, 'remainingQuotaLabel')}: <strong>${state.kalanKota} / ${state.kotaLimiti}</strong>
           </span>
+          <button class="btn btn-coffee" id="btn-coffee">${t(state.dil, 'buyCoffeeBtn')}</button>
+          <button class="btn btn-primary btn-sm" id="btn-pro">${t(state.dil, 'upgradeProBtn')}</button>
           <button class="btn" id="btn-lang">${state.dil === 'tr' ? '🌐 EN' : '🌐 TR'}</button>
-          <button class="btn" id="btn-theme">${state.tema === 'dark' ? '☀️ Light' : '🌙 Dark'}</button>
+          <button class="btn" id="btn-theme">${state.tema === 'dark' ? '☀️' : '🌙'}</button>
           <button class="btn" id="btn-dev-panel">${t(state.dil, 'devPanelButton')}</button>
         </div>
       </header>
+
+      ${
+        state.proModalAcik
+          ? `
+        <div class="card" style="border: 1px solid var(--accent); background: var(--surface); padding: 1.5rem; margin-bottom: 1.5rem;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+            <div>
+              <h3 style="font-size: 1.2rem; font-weight: 750;">${t(state.dil, 'proModalTitle')}</h3>
+              <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0.4rem 0 0.8rem;">
+                ${t(state.dil, 'proModalSubtitle')}
+              </p>
+              <div class="badge badge-accent" style="font-size: 0.9rem; padding: 0.4rem 0.8rem; margin-bottom: 1rem;">
+                💳 ${t(state.dil, 'proPriceText')}
+              </div>
+              <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+                <button class="btn btn-primary" onclick="alert('${tr ? 'Lemon Squeezy / Shopier ödeme akışı buraya bağlanır. Şirket kurmadan, anında kredi kartıyla tahsilat yapabilirsin!' : 'Connects to Lemon Squeezy / Shopier checkout.'}')">
+                  🚀 ${tr ? 'Hemen Abone Ol (Lemon Squeezy / Shopier)' : 'Subscribe Now'}
+                </button>
+                <button class="btn" id="btn-close-pro">${tr ? 'Kapat' : 'Close'}</button>
+              </div>
+            </div>
+          </div>
+        </div>`
+          : ''
+      }
+
+      ${
+        state.coffeeModalAcik
+          ? `
+        <div class="card" style="border: 1px solid var(--warning); background: var(--surface); padding: 1.5rem; margin-bottom: 1.5rem;">
+          <h3 style="font-size: 1.2rem; font-weight: 750;">${t(state.dil, 'coffeeModalTitle')}</h3>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0.4rem 0 1rem;">
+            ${t(state.dil, 'coffeeModalSubtitle')}
+          </p>
+          <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+            <a href="https://buymeacoffee.com" target="_blank" class="btn btn-coffee" style="text-decoration: none;">
+              ☕ Buy Me a Coffee / Destek Sayfası
+            </a>
+            <button class="btn" id="btn-close-coffee">${tr ? 'Kapat' : 'Close'}</button>
+          </div>
+        </div>`
+          : ''
+      }
 
       ${
         state.bildirimMesaji
@@ -561,9 +610,9 @@ function render(): void {
 
         <div class="dropzone" id="dropzone-area">
           <input type="file" id="file-input" accept="audio/*,video/*,.vtt,.srt,.txt" style="display: none;" />
-          <div style="font-size: 1.8rem; margin-bottom: 0.3rem;">📂</div>
-          <div style="font-weight: 700; font-size: 1rem;">${t(state.dil, 'dropzoneTitle')}</div>
-          <div style="font-size: 0.84rem; color: var(--text-muted); margin-top: 0.2rem;">${t(state.dil, 'dropzoneSubtitle')}</div>
+          <div style="font-size: 1.5rem; margin-bottom: 0.35rem;">📂</div>
+          <div class="dropzone-title">${t(state.dil, 'dropzoneTitle')}</div>
+          <div class="dropzone-sub">${t(state.dil, 'dropzoneSubtitle')}</div>
         </div>
 
         ${
@@ -673,6 +722,28 @@ function render(): void {
 }
 
 function baglaOlayDinleyicileri(): void {
+  document.getElementById('btn-pro')?.addEventListener('click', () => {
+    state.proModalAcik = !state.proModalAcik;
+    state.coffeeModalAcik = false;
+    render();
+  });
+
+  document.getElementById('btn-close-pro')?.addEventListener('click', () => {
+    state.proModalAcik = false;
+    render();
+  });
+
+  document.getElementById('btn-coffee')?.addEventListener('click', () => {
+    state.coffeeModalAcik = !state.coffeeModalAcik;
+    state.proModalAcik = false;
+    render();
+  });
+
+  document.getElementById('btn-close-coffee')?.addEventListener('click', () => {
+    state.coffeeModalAcik = false;
+    render();
+  });
+
   document.getElementById('btn-lang')?.addEventListener('click', () => {
     state.dil = state.dil === 'tr' ? 'en' : 'tr';
     render();
