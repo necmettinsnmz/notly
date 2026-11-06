@@ -62,6 +62,61 @@ async function checkServerHealth() {
 setInterval(checkServerHealth, 3500);
 checkServerHealth();
 
+// 1.1 Aktif Sekme Göstergesi ve Güvenlik Denetimi
+function isRestrictedUrl(url) {
+  if (!url || typeof url !== 'string') return true;
+  const u = url.trim().toLowerCase();
+  return (
+    u === '' ||
+    u.startsWith('chrome://') ||
+    u.startsWith('chrome-extension://') ||
+    u.startsWith('edge://') ||
+    u.startsWith('about:') ||
+    u.startsWith('devtools://') ||
+    u.startsWith('view-source:') ||
+    u.includes('chromewebstore.google.com')
+  );
+}
+
+async function updateTargetTabBadge() {
+  const badge = document.getElementById('target-tab-badge');
+  const titleSpan = document.getElementById('target-tab-title');
+  if (!badge || !titleSpan) return;
+
+  try {
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const tab = tabs[0];
+    if (!tab) {
+      badge.className = 'target-tab-badge';
+      titleSpan.textContent = 'Sekme aranıyor...';
+      return;
+    }
+
+    if (isRestrictedUrl(tab.url)) {
+      badge.className = 'target-tab-badge restricted';
+      titleSpan.textContent = '⚠️ Sistem Sekmesi (Kayıt İçin Ders Sekmesine Geçin)';
+    } else {
+      badge.className = 'target-tab-badge ready';
+      const cleanTitle = (tab.title || 'Ders Sayfası').replace(/ - YouTube$/, '');
+      titleSpan.textContent = `🎯 ${cleanTitle.slice(0, 32)}`;
+    }
+  } catch {
+    badge.className = 'target-tab-badge';
+    titleSpan.textContent = 'Ders sekmesi kontrol ediliyor...';
+  }
+}
+
+if (chrome.tabs) {
+  chrome.tabs.onActivated.addListener(updateTargetTabBadge);
+  chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+    if (changeInfo.status === 'complete' || changeInfo.title || changeInfo.url) {
+      updateTargetTabBadge();
+    }
+  });
+}
+updateTargetTabBadge();
+setInterval(updateTargetTabBadge, 2500);
+
 // 2. Slayt / Ekran Yakalama Fonksiyonu (Akıllı Yakalayıcı)
 function captureSlide(customCaption) {
   chrome.runtime.sendMessage({ type: 'CAPTURE_VISIBLE_TAB' }, (res) => {
@@ -120,6 +175,21 @@ const recordIcon = document.getElementById('record-icon');
 
 btnToggle?.addEventListener('click', async () => {
   if (!isRecording) {
+    // 1. Önce aktif sekmenin uygunluğunu kontrol et
+    try {
+      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const currentTab = tabs[0];
+      if (!currentTab || isRestrictedUrl(currentTab.url)) {
+        showStatus(
+          '⚠️ Chrome güvenlik kuralı: "chrome://" sistem sayfalarında (örneğin eklentiler sayfasında) ses veya ekran kaydı yapılamaz. Lütfen dersinizin (Moodle, Zoom, YouTube vb.) açık olduğu sekmeye geçip butona basın.',
+          'error'
+        );
+        return;
+      }
+    } catch {
+      // Devam et
+    }
+
     // KAYDI BAŞLAT
     showStatus('Sekme ses bağlantısı kuruluyor...');
     chrome.runtime.sendMessage({ type: 'START_TAB_RECORDING' }, (res) => {

@@ -4,6 +4,7 @@
   "version": "0.1.1",
   "description": "Canlı dersleri (Moodle, Zoom, Teams, YouTube) dinler, slaytları otomatik yakalar ve sınav notu çıkarır.",
   "permissions": [
+    "tabs",
     "tabCapture",
     "offscreen",
     "sidePanel",
@@ -12,7 +13,8 @@
     "storage"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "<all_urls>",
+    "*://*/*"
   ],
   "background": {
     "service_worker": "background.js"

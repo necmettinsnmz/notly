@@ -208,12 +208,65 @@
         border-radius: 6px;
         border: 1px solid var(--border-subtle);
       }
+      .target-tab-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        background: var(--surface-inset);
+        border: 1px solid var(--border-subtle);
+        font-size: 0.78rem;
+        margin-bottom: 12px;
+        color: var(--text-muted);
+        overflow: hidden;
+      }
+
+      .target-tab-badge.ready {
+        border-color: rgba(16, 185, 129, 0.35);
+        color: var(--text-primary);
+      }
+
+      .target-tab-badge.restricted {
+        border-color: rgba(245, 158, 11, 0.4);
+        background: rgba(245, 158, 11, 0.08);
+        color: #fcd34d;
+      }
+
+      .tab-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--text-muted);
+        flex-shrink: 0;
+      }
+
+      .target-tab-badge.ready .tab-dot {
+        background: var(--success);
+        box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+      }
+
+      .target-tab-badge.restricted .tab-dot {
+        background: var(--warning);
+      }
+
+      .tab-title-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
     </style>
   </head>
   <body>
     <div class="header">
       <div class="logo">⚡ Notly Scribe</div>
       <span id="server-status" class="server-pill">○ Sunucu Aranıyor...</span>
+    </div>
+
+    <!-- HEDEF SEKME GÖSTERGESİ -->
+    <div id="target-tab-badge" class="target-tab-badge">
+      <span class="tab-dot"></span>
+      <span id="target-tab-title" class="tab-title-text">Ders Sekmesi Kontrol Ediliyor...</span>
     </div>
 
     <!-- ANA KAYIT VE DİNLEME BUTONU -->
