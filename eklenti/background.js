@@ -36,8 +36,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return;
       }
 
+      // Chrome Güvenlik Kontrolü: chrome:// ve dahili sayfalarda kayıt engellenir
+      const url = activeTab.url || '';
+      if (
+        url.startsWith('chrome://') ||
+        url.startsWith('chrome-extension://') ||
+        url.startsWith('edge://') ||
+        url.startsWith('about:') ||
+        url.includes('chromewebstore.google.com')
+      ) {
+        sendResponse({
+          ok: false,
+          error:
+            'Chrome güvenlik kuralı: "chrome://" sayfalarında veya boş sekmede kayıt yapılamaz. Lütfen dersinizin (Moodle, Zoom, YouTube vb.) açık olduğu sekmeye geçip butona basın.',
+        });
+        return;
+      }
+
       try {
-        const dataUrl = await chrome.tabs.captureVisibleTab(activeTab.windowId, {
+        const dataUrl = await chrome.tabs.captureVisibleTab(null, {
           format: 'jpeg',
           quality: 75,
         });
@@ -63,6 +80,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const activeTab = tabs[0];
       if (!activeTab || !activeTab.id) {
         sendResponse({ ok: false, error: 'Aktif ders sekmesi bulunamadı.' });
+        return;
+      }
+
+      const url = activeTab.url || '';
+      if (
+        url.startsWith('chrome://') ||
+        url.startsWith('chrome-extension://') ||
+        url.startsWith('edge://') ||
+        url.startsWith('about:') ||
+        url.includes('chromewebstore.google.com')
+      ) {
+        sendResponse({
+          ok: false,
+          error:
+            'Chrome güvenlik kuralı: "chrome://" sayfalarında (örneğin eklentiler sekmesinde) ses kaydı yapılamaz. Lütfen üniversitenizin ders sisteminin (Moodle, Zoom, YouTube vb.) açık olduğu sekmeye geçip butona basın.',
+        });
         return;
       }
 
