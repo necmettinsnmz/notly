@@ -2,7 +2,8 @@
  * NOTLY YAN PANEL KONTROLCÜSÜ (SIDEPANEL.JS)
  * -----------------------------------------
  * - Canlı dersleri (Moodle, Zoom, Teams, YouTube) tek tıkla dinler.
- * - Hoca "ekrana bakın / burası sınavda çıkar" dediğinde ekranı fotoğraflar.
+ * - getDisplayMedia ile doğrudan sekme veya pencere sesini ve görüntüsünü alır.
+ * - Hoca "ekrana bakın / burası sınavda çıkar" dediğinde anında yüksek çözünürlüklü slayt karesi yakalar.
  * - Slaytları ve sesi yapay zekaya multimodal (görsel + ses) olarak gönderir.
  * - Çıktıyı akademik ders kitabı pedagojisiyle (sohbetsiz, doğrudan ders) üretir.
  */
@@ -14,6 +15,15 @@ let isRecording = false;
 let recordingStartTime = 0;
 let timerInterval = null;
 let capturedSlides = [];
+
+// Canlı Yayın ve Medya Değişkenleri
+let mediaStream = null;
+let mediaRecorder = null;
+let audioChunks = [];
+const liveVideo = document.createElement('video');
+liveVideo.muted = true;
+liveVideo.autoplay = true;
+liveVideo.playsInline = true;
 
 function formatSeconds(totalSec) {
   const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
@@ -62,90 +72,36 @@ async function checkServerHealth() {
 setInterval(checkServerHealth, 3500);
 checkServerHealth();
 
-// 1.1 Aktif Sekme Göstergesi ve Güvenlik Denetimi
-let currentActiveTab = null;
-
-function isRestrictedUrl(url) {
-  if (!url || typeof url !== 'string') return true;
-  const u = url.trim().toLowerCase();
-  return (
-    u === '' ||
-    u.startsWith('chrome://') ||
-    u.startsWith('chrome-extension://') ||
-    u.startsWith('edge://') ||
-    u.startsWith('about:') ||
-    u.startsWith('devtools://') ||
-    u.startsWith('view-source:') ||
-    u.includes('chromewebstore.google.com')
-  );
-}
-
-async function updateTargetTabBadge() {
-  const badge = document.getElementById('target-tab-badge');
-  const titleSpan = document.getElementById('target-tab-title');
+// 2. Slayt / Ekran Yakalama Fonksiyonu (Doğrudan Video Akışından Kristal Netlikte Kare Alır)
+function snapSlideFromVideo(customCaption) {
+  if (!liveVideo || !liveVideo.videoWidth) {
+    return;
+  }
 
   try {
-    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    const tab = tabs[0];
-    if (!tab) {
-      currentActiveTab = null;
-      if (badge && titleSpan) {
-        badge.className = 'target-tab-badge';
-        titleSpan.textContent = 'Sekme aranıyor...';
-      }
-      return;
-    }
+    const canvas = document.createElement('canvas');
+    canvas.width = liveVideo.videoWidth;
+    canvas.height = liveVideo.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    currentActiveTab = tab;
+    ctx.drawImage(liveVideo, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
-    if (!badge || !titleSpan) return;
+    const elapsedSec = isRecording ? Math.floor((Date.now() - recordingStartTime) / 1000) : 0;
+    const ts = formatSeconds(elapsedSec);
 
-    if (isRestrictedUrl(tab.url)) {
-      badge.className = 'target-tab-badge restricted';
-      titleSpan.textContent = '⚠️ Sistem Sekmesi (Kayıt İçin Ders Sekmesine Geçin)';
-    } else {
-      badge.className = 'target-tab-badge ready';
-      const cleanTitle = (tab.title || 'Ders Sayfası').replace(/ - YouTube$/, '');
-      titleSpan.textContent = `🎯 ${cleanTitle.slice(0, 32)}`;
-    }
-  } catch {
-    currentActiveTab = null;
+    capturedSlides.push({
+      timestamp: ts,
+      imageUrl: dataUrl,
+      caption: customCaption || `Slayt [${ts}] (Hoca Vurgusu)`,
+    });
+
+    renderSlides();
+    showStatus(`📸 Slayt [${ts}] kaydedildi! Yapay zeka formülleri ve şemaları çözecek.`, 'success');
+  } catch (err) {
+    console.error('Slayt alma hatası:', err);
   }
-}
-
-if (chrome.tabs) {
-  chrome.tabs.onActivated.addListener(updateTargetTabBadge);
-  chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
-    if (changeInfo.status === 'complete' || changeInfo.title || changeInfo.url) {
-      updateTargetTabBadge();
-    }
-  });
-}
-updateTargetTabBadge();
-setInterval(updateTargetTabBadge, 2500);
-
-// 2. Slayt / Ekran Yakalama Fonksiyonu (Akıllı Yakalayıcı)
-function captureSlide(customCaption) {
-  chrome.runtime.sendMessage({ type: 'CAPTURE_VISIBLE_TAB' }, (res) => {
-    if (res?.ok && res.dataUrl) {
-      const elapsedSec = isRecording ? Math.floor((Date.now() - recordingStartTime) / 1000) : 0;
-      const ts = formatSeconds(elapsedSec);
-
-      capturedSlides.push({
-        timestamp: ts,
-        imageUrl: res.dataUrl,
-        caption: customCaption || `Slayt [${ts}] (Hoca Vurgusu)`,
-      });
-
-      renderSlides();
-      showStatus(`📸 Slayt [${ts}] yapay zekaya incelenmek üzere kaydedildi!`, 'success');
-    } else {
-      // Başlangıç otomatik karesi alınamazsa ses kaydının yeşil durum mesajını ezme
-      if (customCaption !== 'Ders Başlangıç Referans Slaytı') {
-        showStatus(`⚠️ Slayt yakalanamadı: ${res?.error || 'Sekme açık değil'}`, 'error');
-      }
-    }
-  });
 }
 
 function renderSlides() {
@@ -173,135 +129,185 @@ function renderSlides() {
   track.scrollLeft = track.scrollWidth;
 }
 
-// 3. Ana Kayıt Butonu (Başlat / Durdur)
+// 3. Ana Kayıt Kontrolleri
 const btnToggle = document.getElementById('btn-toggle-record');
 const btnSnap = document.getElementById('btn-snap-slide');
 const recordTimer = document.getElementById('record-timer');
 const recordText = document.getElementById('record-text');
 const recordIcon = document.getElementById('record-icon');
+const targetTabBadge = document.getElementById('target-tab-badge');
+const targetTabTitle = document.getElementById('target-tab-title');
 
-// 3. Ana Kayıt Fonksiyonu (Kullanıcı Tıklaması ile Senkron Yetkilendirme)
-function startRecordingForTab(tab) {
-  if (!tab || !tab.id) {
-    showStatus('⚠️ Hedef ders sekmesi henüz algılanamadı.', 'error');
-    return;
-  }
+async function startRecording() {
+  try {
+    showStatus('Dersinizin açık olduğu sekme veya pencereyi seçin...');
 
-  if (isRestrictedUrl(tab.url)) {
-    showStatus(
-      '⚠️ Chrome güvenlik kuralı: Sistem sayfalarında (chrome:// veya eklentiler) ses kaydı yapılamaz. Lütfen ders sekmenize geçin.',
-      'error'
-    );
-    return;
-  }
+    // Chrome'un yerel ve güvenli ekran/sekme paylaşım penceresini açar
+    mediaStream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        displaySurface: 'browser',
+      },
+      audio: {
+        suppressLocalAudioPlayback: false,
+      },
+    });
 
-  showStatus('Sekme ses bağlantısı kuruluyor...');
-
-  // KULLANICI TIKLAMASI (USER GESTURE) ANINDA DOĞRUDAN ÇAĞRI:
-  // Bu çağrı doğrudan click olayının içinde yapıldığı için Chrome güvenlik engelini aşar!
-  chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, (streamId) => {
-    if (chrome.runtime.lastError || !streamId) {
+    const audioTracks = mediaStream.getAudioTracks();
+    if (audioTracks.length === 0) {
       showStatus(
-        `⚠️ ${chrome.runtime.lastError?.message || 'Sekme sesine erişilemedi. Lütfen derste ses çaldığından emin olun.'}`,
+        '⚠️ Seçilen sekmenin sesi paylaşılmadı. Lütfen açılan pencerede "Sekme Sesini Paylaş" kutucuğunun açık olduğundan emin olun.',
         'error'
       );
+      mediaStream.getTracks().forEach((t) => t.stop());
+      mediaStream = null;
       return;
     }
 
-    // streamId alındı! Arka plan servisine aktararak offscreen kaydı başlat
-    chrome.runtime.sendMessage(
-      { type: 'START_OFFSCREEN_RECORDING', streamId },
-      (res) => {
-        if (res?.ok) {
-          isRecording = true;
-          recordingStartTime = Date.now();
-          capturedSlides = [];
+    // Video akışını gizli video elementine bağla (slayt yakalamak için)
+    liveVideo.srcObject = mediaStream;
+    await liveVideo.play().catch(() => {});
 
-          btnToggle.className = 'btn btn-recording';
-          recordIcon.textContent = '⏹️';
-          recordText.textContent = 'Dersi Bitir ve Ders Kitabı Notu Çıkar';
-          recordTimer.style.display = 'inline-block';
-          recordTimer.textContent = '00:00';
-          btnSnap.style.display = 'flex';
-
-          showStatus(
-            '🔴 Canlı ders dinleniyor. Hoca ekrandaki bir formüle veya şekle değindiğinde butona basarak o kareyi kaydedin.',
-            'success'
-          );
-
-          // Canlı Süre Sayacı
-          timerInterval = setInterval(() => {
-            const sec = Math.floor((Date.now() - recordingStartTime) / 1000);
-            recordTimer.textContent = formatSeconds(sec);
-          }, 1000);
-
-          // İlk slaytı başlangıç referansı olarak yakala
-          captureSlide('Ders Başlangıç Referans Slaytı');
-        } else {
-          showStatus(`⚠️ ${res?.error || 'Sekme sesi başlatılamadı.'}`, 'error');
+    // Kullanıcı tarayıcıdaki "Paylaşımı Durdur" butonuna basarsa otomatik olarak sonlandır
+    const videoTrack = mediaStream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.onended = () => {
+        if (isRecording) {
+          stopRecordingAndSummarize();
         }
+      };
+    }
+
+    // MediaRecorder ile ses kaydını başlat
+    audioChunks = [];
+    const audioOnlyStream = new MediaStream(audioTracks);
+
+    let mimeType = 'audio/webm;codecs=opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+      mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    }
+
+    mediaRecorder = new MediaRecorder(audioOnlyStream, mimeType ? { mimeType } : undefined);
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        audioChunks.push(e.data);
       }
+    };
+
+    mediaRecorder.start(1000);
+
+    isRecording = true;
+    recordingStartTime = Date.now();
+    capturedSlides = [];
+
+    btnToggle.className = 'btn btn-recording';
+    recordIcon.textContent = '⏹️';
+    recordText.textContent = 'Dersi Bitir ve Ders Kitabı Notu Çıkar';
+    recordTimer.style.display = 'inline-block';
+    recordTimer.textContent = '00:00';
+    btnSnap.style.display = 'flex';
+
+    if (targetTabBadge && targetTabTitle) {
+      targetTabBadge.className = 'target-tab-badge ready';
+      targetTabTitle.textContent = '🔴 Canlı Ders Dinleniyor ve Kaydediliyor';
+    }
+
+    showStatus(
+      '🔴 Canlı ders dinleniyor. Hoca ekrandaki bir formüle veya önemli bir konuya değindiğinde butona basarak o kareyi kaydedin.',
+      'success'
     );
-  });
+
+    timerInterval = setInterval(() => {
+      const sec = Math.floor((Date.now() - recordingStartTime) / 1000);
+      recordTimer.textContent = formatSeconds(sec);
+    }, 1000);
+
+    // İlk slaytı başlangıç referansı olarak 800ms sonra yakala
+    setTimeout(() => {
+      snapSlideFromVideo('Ders Başlangıç Referans Slaytı');
+    }, 800);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'NotAllowedError') {
+      showStatus('Sekme seçimi iptal edildi.', 'info');
+    } else {
+      showStatus(`⚠️ Kayıt başlatılamadı: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    }
+  }
+}
+
+async function stopRecordingAndSummarize() {
+  if (!isRecording) return;
+  isRecording = false;
+  clearInterval(timerInterval);
+
+  const totalSeconds = Math.max(5, Math.floor((Date.now() - recordingStartTime) / 1000));
+
+  btnToggle.className = 'btn btn-record';
+  recordIcon.textContent = '🔴';
+  recordText.textContent = 'Canlı Dersi Dinle ve Not Al';
+  recordTimer.style.display = 'none';
+  btnSnap.style.display = 'none';
+
+  if (targetTabBadge && targetTabTitle) {
+    targetTabBadge.className = 'target-tab-badge';
+    targetTabTitle.textContent = 'Ders Tamamlandı — Not Hazırlanıyor';
+  }
+
+  showStatus(
+    `⏳ Ders bitti (${formatSeconds(totalSeconds)}). Yapay zeka ses kaydını ve ${capturedSlides.length} slayt görüntüsünü inceleyerek ders kitabı notunu hazırlıyor...`
+  );
+
+  // Kaydediciyi ve medya akışlarını durdur
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  if (mediaStream) {
+    mediaStream.getTracks().forEach((t) => t.stop());
+    mediaStream = null;
+  }
+
+  // Chunks toparlanması için kısa bir bekleme
+  await new Promise((r) => setTimeout(r, 500));
+
+  const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+  if (audioBlob.size === 0) {
+    showStatus('⚠️ Kaydedilen ses verisi boş çıktı.', 'error');
+    return;
+  }
+
+  // Base64'e dönüştür ve sunucuya gönder
+  const reader = new FileReader();
+  reader.readAsDataURL(audioBlob);
+  reader.onloadend = async () => {
+    const base64Audio = reader.result;
+
+    await gonderSunucuya({
+      title: 'Canlı Ders Kaydı',
+      durationSeconds: totalSeconds,
+      method: 'compressed_audio',
+      mediaBase64: typeof base64Audio === 'string' ? base64Audio : '',
+      mediaMimeType: 'audio/webm',
+      slides: capturedSlides,
+    });
+  };
 }
 
 btnToggle?.addEventListener('click', () => {
   if (!isRecording) {
-    if (currentActiveTab && currentActiveTab.id) {
-      startRecordingForTab(currentActiveTab);
-    } else {
-      chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-        const tab = tabs[0];
-        if (tab) {
-          currentActiveTab = tab;
-          startRecordingForTab(tab);
-        } else {
-          showStatus('⚠️ Hedef ders sekmesi henüz algılanamadı. Lütfen ders sekmesine tıklayın.', 'error');
-        }
-      });
-    }
+    startRecording();
   } else {
-    // KAYDI BİTİR VE ÖZETLE
-    isRecording = false;
-    clearInterval(timerInterval);
-
-    const totalSeconds = Math.max(10, Math.floor((Date.now() - recordingStartTime) / 1000));
-
-    btnToggle.className = 'btn btn-record';
-    recordIcon.textContent = '🔴';
-    recordText.textContent = 'Canlı Dersi Dinle ve Not Al';
-    recordTimer.style.display = 'none';
-    btnSnap.style.display = 'none';
-
-    showStatus(
-      `⏳ Ders bitti (${formatSeconds(totalSeconds)}). Yapay zeka konuşmaları ve ${capturedSlides.length} slayttaki formülleri inceleyerek ders kitabı notunu hazırlıyor...`
-    );
-
-    chrome.runtime.sendMessage({ type: 'STOP_TAB_RECORDING' }, async (stopRes) => {
-      if (stopRes?.ok && stopRes.mediaBase64) {
-        await gonderSunucuya({
-          title: 'Canlı Ders Kaydı',
-          durationSeconds: totalSeconds,
-          method: 'compressed_audio',
-          mediaBase64: stopRes.mediaBase64,
-          mediaMimeType: stopRes.mediaMimeType,
-          slides: capturedSlides,
-        });
-      } else {
-        showStatus('Kayıtlı ses verisi alınamadı.', 'error');
-      }
-    });
+    stopRecordingAndSummarize();
   }
 });
 
-// 4. Hoca Vurgusu Slayt Butonu (veya Klavyeden Kısayol)
 btnSnap?.addEventListener('click', () => {
-  captureSlide('Hoca Tarafından Vurgulanan Kritik Slayt');
+  snapSlideFromVideo('Hoca Tarafından Vurgulanan Kritik Slayt');
 });
 
-// 5. Sunucuya Gönderme ve Ders Notu Çıkarma
+// 4. Sunucuya Gönderme ve Ders Notu Çıkarma
 async function gonderSunucuya(payload) {
   const out = document.getElementById('output-area');
+  if (!out) return;
+
   out.innerHTML = `
     <div class="result-card">
       <div style="font-weight: 700; margin-bottom: 6px;">🧠 Ders Kitabı Özeti Üretiliyor...</div>
@@ -332,7 +338,7 @@ async function gonderSunucuya(payload) {
     } else {
       showStatus(`Hata: ${data.message || 'Özet üretilemedi.'}`, 'error');
     }
-  } catch (err) {
+  } catch {
     out.innerHTML = `
       <div class="result-card" style="border-color: var(--danger);">
         ⚠️ Notly yerel sunucusuna bağlanılamadı. Lütfen terminalde <code>npm run dev</code> komutunun açık olduğundan emin olun.
@@ -342,6 +348,8 @@ async function gonderSunucuya(payload) {
 
 function renderSummary(summary) {
   const out = document.getElementById('output-area');
+  if (!out) return;
+
   out.innerHTML = `
     <div class="result-card">
       <div style="font-size: 1.05rem; font-weight: 750; margin-bottom: 4px;">
@@ -376,7 +384,7 @@ function renderSummary(summary) {
           .join('')}
       </div>
 
-      <!-- 3. DERS İÇİ DUYURULAR VE TARİHLER (HOCANIN BİLGİLENDİRMELERİ) -->
+      <!-- 3. DERS İÇİ DUYURULAR VE TARİHLER -->
       ${
         summary.quick.actionItems && summary.quick.actionItems.length > 0
           ? `
