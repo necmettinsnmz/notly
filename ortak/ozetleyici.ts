@@ -433,10 +433,18 @@ export async function uretAkilliOzet(
       const parcalar: Array<Record<string, unknown>> = [];
 
       if (istek.mediaBase64 && istek.mediaMimeType) {
+        // Base64 başlığındaki "data:...;base64," önekini temizle (Gemini API saf base64 bekler)
+        const rawMediaBase64 = istek.mediaBase64.includes(',')
+          ? istek.mediaBase64.split(',')[1]
+          : istek.mediaBase64;
+
+        // MIME türünü codec eklerinden arındır (örn: "audio/webm;codecs=opus" -> "audio/webm")
+        const temizMimeType = istek.mediaMimeType.split(';')[0].trim();
+
         parcalar.push({
           inlineData: {
-            data: istek.mediaBase64,
-            mimeType: istek.mediaMimeType,
+            data: rawMediaBase64,
+            mimeType: temizMimeType,
           },
         });
       }

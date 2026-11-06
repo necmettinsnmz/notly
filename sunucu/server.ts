@@ -139,6 +139,28 @@ export function createNotlyServer() {
       return;
     }
 
+    // 4.1 Gemini API Anahtarı Kaydetme
+    if (req.method === 'POST' && url.pathname === '/api/settings/key') {
+      try {
+        const hamGovde = await okuIstekGovdesi(req);
+        const { apiKey } = JSON.parse(hamGovde);
+        if (typeof apiKey === 'string' && apiKey.trim().length > 10) {
+          process.env.GEMINI_API_KEY = apiKey.trim();
+          const envPath = path.resolve(process.cwd(), '.env');
+          fs.writeFileSync(envPath, `GEMINI_API_KEY=${apiKey.trim()}\nPORT=5173\n`);
+          logger.info('AYAR', 'Gemini API anahtarı kaydedildi ve canlı mod aktif edildi.');
+          gonderJson(res, 200, { ok: true, message: 'Canlı Gemini 2.5 Flash aktif!' });
+          return;
+        } else {
+          gonderJson(res, 400, { ok: false, message: 'Geçersiz API anahtarı formatı.' });
+          return;
+        }
+      } catch (err) {
+        gonderJson(res, 500, { ok: false, error: String(err) });
+        return;
+      }
+    }
+
     // 5. Ana Özetleme Endpoint'i
     if (req.method === 'POST' && url.pathname === '/api/summarize') {
       try {
