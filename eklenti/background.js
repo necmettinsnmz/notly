@@ -2,8 +2,8 @@
  * NOTLY CHROME EKLENTİSİ — ARKA PLAN SERVİSİ (BACKGROUND SERVICE WORKER)
  * ----------------------------------------------------------------------
  * 1. Eklenti ikonuna tıklanınca Yan Paneli (Side Panel) açar.
- * 2. chrome.tabs.captureVisibleTab ile sekmede görünen ders slaytını (Zoom, Teams, Moodle, BBB vb.) fotoğraflar.
- * 3. chrome.tabCapture ile sekme sesini yakalayıp Offscreen belgeye aktarır.
+ * 2. chrome.tabs.captureVisibleTab ile sekmede görünen ders slaytını fotoğraflar.
+ * 3. Offscreen belgede MediaRecorder ile sekme sesini kaydeder.
  */
 
 chrome.sidePanel
@@ -26,10 +26,6 @@ async function ensureOffscreenDocument() {
   });
 }
 
-/**
- * Chrome sistem sayfaları (chrome://, about:, extensions vb.) eklentiler tarafından
- * güvenlik nedeniyle dinlenemez ve fotoğraflanamaz.
- */
 function isRestrictedUrl(url) {
   if (!url || typeof url !== 'string') return true;
   const u = url.trim().toLowerCase();
@@ -92,20 +88,43 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  // 2. Sekme Sesini Kaydetmeye Başla
+  // 2. Yan Panelden Kullanıcı Hareketiyle (User Gesture) Alınan streamId ile Kaydı Başlat
+  if (message.type === 'START_OFFSCREEN_RECORDING') {
+    (async () => {
+      try {
+        await ensureOffscreenDocument();
+
+        chrome.runtime.sendMessage(
+          { target: 'offscreen', type: 'START_RECORDING', streamId: message.streamId },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              sendResponse({
+                ok: false,
+                error: `Offscreen iletişim hatası: ${chrome.runtime.lastError.message}`,
+              });
+              return;
+            }
+            sendResponse(response || { ok: true });
+          }
+        );
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          error: `Offscreen başlatılamadı: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    })();
+    return true;
+  }
+
+  // 3. Eski tip doğrudan istek için yedek handler
   if (message.type === 'START_TAB_RECORDING') {
     chrome.tabs.query({ active: true, lastFocusedWindow: true }, async (tabs) => {
       const activeTab = tabs[0];
-      if (!activeTab || !activeTab.id) {
-        sendResponse({ ok: false, error: 'Aktif ders sekmesi bulunamadı.' });
-        return;
-      }
-
-      if (isRestrictedUrl(activeTab.url)) {
+      if (!activeTab || !activeTab.id || isRestrictedUrl(activeTab.url)) {
         sendResponse({
           ok: false,
-          error:
-            'Chrome güvenlik kuralı: "chrome://" sayfalarında (örneğin eklentiler sekmesinde) ses kaydı yapılamaz. Lütfen üniversitenizin ders sisteminin (Moodle, Zoom, YouTube vb.) açık olduğu sekmeye geçip butona basın.',
+          error: 'Sistem sayfalarında kayıt yapılamaz. Lütfen ders sekmesine geçin.',
         });
         return;
       }
@@ -124,38 +143,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
           try {
             await ensureOffscreenDocument();
-
             chrome.runtime.sendMessage(
               { target: 'offscreen', type: 'START_RECORDING', streamId },
-              (response) => {
-                if (chrome.runtime.lastError) {
-                  sendResponse({
-                    ok: false,
-                    error: `Offscreen iletişim hatası: ${chrome.runtime.lastError.message}`,
-                  });
-                  return;
-                }
-                sendResponse(response || { ok: true });
-              }
+              (response) => sendResponse(response || { ok: true })
             );
           } catch (err) {
-            sendResponse({
-              ok: false,
-              error: `Kayıt başlatılamadı: ${err instanceof Error ? err.message : String(err)}`,
-            });
+            sendResponse({ ok: false, error: String(err) });
           }
         });
       } catch (err) {
-        sendResponse({
-          ok: false,
-          error: `Sekme sesi yakalanamadı: ${err instanceof Error ? err.message : String(err)}`,
-        });
+        sendResponse({ ok: false, error: String(err) });
       }
     });
     return true;
   }
 
-  // 3. Sekme Ses Kaydını Bitir ve Sesi Al
+  // 4. Sekme Ses Kaydını Bitir ve Sesi Al
   if (message.type === 'STOP_TAB_RECORDING') {
     chrome.runtime.sendMessage(
       { target: 'offscreen', type: 'STOP_RECORDING' },

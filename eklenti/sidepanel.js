@@ -63,6 +63,8 @@ setInterval(checkServerHealth, 3500);
 checkServerHealth();
 
 // 1.1 Aktif Sekme Göstergesi ve Güvenlik Denetimi
+let currentActiveTab = null;
+
 function isRestrictedUrl(url) {
   if (!url || typeof url !== 'string') return true;
   const u = url.trim().toLowerCase();
@@ -81,16 +83,22 @@ function isRestrictedUrl(url) {
 async function updateTargetTabBadge() {
   const badge = document.getElementById('target-tab-badge');
   const titleSpan = document.getElementById('target-tab-title');
-  if (!badge || !titleSpan) return;
 
   try {
     const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     const tab = tabs[0];
     if (!tab) {
-      badge.className = 'target-tab-badge';
-      titleSpan.textContent = 'Sekme aranıyor...';
+      currentActiveTab = null;
+      if (badge && titleSpan) {
+        badge.className = 'target-tab-badge';
+        titleSpan.textContent = 'Sekme aranıyor...';
+      }
       return;
     }
+
+    currentActiveTab = tab;
+
+    if (!badge || !titleSpan) return;
 
     if (isRestrictedUrl(tab.url)) {
       badge.className = 'target-tab-badge restricted';
@@ -101,8 +109,7 @@ async function updateTargetTabBadge() {
       titleSpan.textContent = `🎯 ${cleanTitle.slice(0, 32)}`;
     }
   } catch {
-    badge.className = 'target-tab-badge';
-    titleSpan.textContent = 'Ders sekmesi kontrol ediliyor...';
+    currentActiveTab = null;
   }
 }
 
@@ -173,55 +180,86 @@ const recordTimer = document.getElementById('record-timer');
 const recordText = document.getElementById('record-text');
 const recordIcon = document.getElementById('record-icon');
 
-btnToggle?.addEventListener('click', async () => {
-  if (!isRecording) {
-    // 1. Önce aktif sekmenin uygunluğunu kontrol et
-    try {
-      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      const currentTab = tabs[0];
-      if (!currentTab || isRestrictedUrl(currentTab.url)) {
-        showStatus(
-          '⚠️ Chrome güvenlik kuralı: "chrome://" sistem sayfalarında (örneğin eklentiler sayfasında) ses veya ekran kaydı yapılamaz. Lütfen dersinizin (Moodle, Zoom, YouTube vb.) açık olduğu sekmeye geçip butona basın.',
-          'error'
-        );
-        return;
-      }
-    } catch {
-      // Devam et
+// 3. Ana Kayıt Fonksiyonu (Kullanıcı Tıklaması ile Senkron Yetkilendirme)
+function startRecordingForTab(tab) {
+  if (!tab || !tab.id) {
+    showStatus('⚠️ Hedef ders sekmesi henüz algılanamadı.', 'error');
+    return;
+  }
+
+  if (isRestrictedUrl(tab.url)) {
+    showStatus(
+      '⚠️ Chrome güvenlik kuralı: Sistem sayfalarında (chrome:// veya eklentiler) ses kaydı yapılamaz. Lütfen ders sekmenize geçin.',
+      'error'
+    );
+    return;
+  }
+
+  showStatus('Sekme ses bağlantısı kuruluyor...');
+
+  // KULLANICI TIKLAMASI (USER GESTURE) ANINDA DOĞRUDAN ÇAĞRI:
+  // Bu çağrı doğrudan click olayının içinde yapıldığı için Chrome güvenlik engelini aşar!
+  chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, (streamId) => {
+    if (chrome.runtime.lastError || !streamId) {
+      showStatus(
+        `⚠️ ${chrome.runtime.lastError?.message || 'Sekme sesine erişilemedi. Lütfen derste ses çaldığından emin olun.'}`,
+        'error'
+      );
+      return;
     }
 
-    // KAYDI BAŞLAT
-    showStatus('Sekme ses bağlantısı kuruluyor...');
-    chrome.runtime.sendMessage({ type: 'START_TAB_RECORDING' }, (res) => {
-      if (res?.ok) {
-        isRecording = true;
-        recordingStartTime = Date.now();
-        capturedSlides = [];
+    // streamId alındı! Arka plan servisine aktararak offscreen kaydı başlat
+    chrome.runtime.sendMessage(
+      { type: 'START_OFFSCREEN_RECORDING', streamId },
+      (res) => {
+        if (res?.ok) {
+          isRecording = true;
+          recordingStartTime = Date.now();
+          capturedSlides = [];
 
-        btnToggle.className = 'btn btn-recording';
-        recordIcon.textContent = '⏹️';
-        recordText.textContent = 'Dersi Bitir ve Ders Kitabı Notu Çıkar';
-        recordTimer.style.display = 'inline-block';
-        recordTimer.textContent = '00:00';
-        btnSnap.style.display = 'flex';
+          btnToggle.className = 'btn btn-recording';
+          recordIcon.textContent = '⏹️';
+          recordText.textContent = 'Dersi Bitir ve Ders Kitabı Notu Çıkar';
+          recordTimer.style.display = 'inline-block';
+          recordTimer.textContent = '00:00';
+          btnSnap.style.display = 'flex';
 
-        showStatus(
-          '🔴 Canlı ders dinleniyor. Hoca ekrandaki bir formüle veya şekle değindiğinde butona basarak o kareyi kaydedin.',
-          'success'
-        );
+          showStatus(
+            '🔴 Canlı ders dinleniyor. Hoca ekrandaki bir formüle veya şekle değindiğinde butona basarak o kareyi kaydedin.',
+            'success'
+          );
 
-        // Canlı Süre Sayacı
-        timerInterval = setInterval(() => {
-          const sec = Math.floor((Date.now() - recordingStartTime) / 1000);
-          recordTimer.textContent = formatSeconds(sec);
-        }, 1000);
+          // Canlı Süre Sayacı
+          timerInterval = setInterval(() => {
+            const sec = Math.floor((Date.now() - recordingStartTime) / 1000);
+            recordTimer.textContent = formatSeconds(sec);
+          }, 1000);
 
-        // İlk slaytı başlangıç referansı olarak yakala
-        captureSlide('Ders Başlangıç Referans Slaytı');
-      } else {
-        showStatus(`⚠️ ${res?.error || 'Sekme sesi başlatılamadı.'}`, 'error');
+          // İlk slaytı başlangıç referansı olarak yakala
+          captureSlide('Ders Başlangıç Referans Slaytı');
+        } else {
+          showStatus(`⚠️ ${res?.error || 'Sekme sesi başlatılamadı.'}`, 'error');
+        }
       }
-    });
+    );
+  });
+}
+
+btnToggle?.addEventListener('click', () => {
+  if (!isRecording) {
+    if (currentActiveTab && currentActiveTab.id) {
+      startRecordingForTab(currentActiveTab);
+    } else {
+      chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+        const tab = tabs[0];
+        if (tab) {
+          currentActiveTab = tab;
+          startRecordingForTab(tab);
+        } else {
+          showStatus('⚠️ Hedef ders sekmesi henüz algılanamadı. Lütfen ders sekmesine tıklayın.', 'error');
+        }
+      });
+    }
   } else {
     // KAYDI BİTİR VE ÖZETLE
     isRecording = false;
