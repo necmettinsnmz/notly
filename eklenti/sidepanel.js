@@ -2,8 +2,9 @@
  * NOTLY YAN PANEL KONTROLCÜSÜ (SIDEPANEL.JS)
  * -----------------------------------------
  * - Canlı dersleri (Moodle, Zoom, Teams, YouTube) tek tıkla dinler.
- * - Slaytları ve ekranı arka planda otomatik (her 40 saniyede bir) fotoğraflar.
- * - Dersi bitirince Notly yerel sunucusuna gönderip sınav notunu çıkarır.
+ * - Hoca "ekrana bakın / burası sınavda çıkar" dediğinde ekranı fotoğraflar.
+ * - Slaytları ve sesi yapay zekaya multimodal (görsel + ses) olarak gönderir.
+ * - Çıktıyı akademik ders kitabı pedagojisiyle (sohbetsiz, doğrudan ders) üretir.
  */
 
 const SERVER_URLS = ['http://localhost:5173', 'http://localhost:8787'];
@@ -12,7 +13,6 @@ let activeServerUrl = null;
 let isRecording = false;
 let recordingStartTime = 0;
 let timerInterval = null;
-let autoSlideInterval = null;
 let capturedSlides = [];
 
 function formatSeconds(totalSec) {
@@ -62,21 +62,23 @@ async function checkServerHealth() {
 setInterval(checkServerHealth, 3500);
 checkServerHealth();
 
-// 2. Slayt / Ekran Yakalama Fonksiyonu
+// 2. Slayt / Ekran Yakalama Fonksiyonu (Akıllı Yakalayıcı)
 function captureSlide(customCaption) {
   chrome.runtime.sendMessage({ type: 'CAPTURE_VISIBLE_TAB' }, (res) => {
     if (res?.ok && res.dataUrl) {
       const elapsedSec = isRecording ? Math.floor((Date.now() - recordingStartTime) / 1000) : 0;
       const ts = formatSeconds(elapsedSec);
 
-      // Çok benzer arka arkaya boş slaytları engellemek için son slaytla karşılaştır
       capturedSlides.push({
         timestamp: ts,
         imageUrl: res.dataUrl,
-        caption: customCaption || `Slayt (${ts})`,
+        caption: customCaption || `Slayt [${ts}] (Hoca Vurgusu)`,
       });
 
       renderSlides();
+      showStatus(`📸 Slayt [${ts}] yapay zekaya incelenmek üzere kaydedildi!`, 'success');
+    } else {
+      showStatus(`⚠️ Slayt yakalanamadı: ${res?.error || 'Sekme açık değil'}`, 'error');
     }
   });
 }
@@ -103,7 +105,6 @@ function renderSlides() {
     )
     .join('');
 
-  // En son eklenen slayta kaydır
   track.scrollLeft = track.scrollWidth;
 }
 
@@ -126,13 +127,13 @@ btnToggle?.addEventListener('click', async () => {
 
         btnToggle.className = 'btn btn-recording';
         recordIcon.textContent = '⏹️';
-        recordText.textContent = 'Dersi Bitir ve Notları Çıkar';
+        recordText.textContent = 'Dersi Bitir ve Ders Kitabı Notu Çıkar';
         recordTimer.style.display = 'inline-block';
         recordTimer.textContent = '00:00';
         btnSnap.style.display = 'flex';
 
         showStatus(
-          '🔴 Canlı ders dinleniyor. Slaytlar her 40 saniyede bir otomatik yakalanacak.',
+          '🔴 Canlı ders dinleniyor. Hoca ekrandaki bir formüle veya şekle değindiğinde butona basarak o kareyi kaydedin.',
           'success'
         );
 
@@ -142,15 +143,8 @@ btnToggle?.addEventListener('click', async () => {
           recordTimer.textContent = formatSeconds(sec);
         }, 1000);
 
-        // İlk slaytı hemen al
-        captureSlide('Ders Başlangıç Slaytı');
-
-        // Otomatik Slayt Yakalayıcı (Her 40 saniyede bir ekran görüntüsü al)
-        autoSlideInterval = setInterval(() => {
-          if (isRecording) {
-            captureSlide();
-          }
-        }, 40000);
+        // İlk slaytı başlangıç referansı olarak yakala
+        captureSlide('Ders Başlangıç Referans Slaytı');
       } else {
         showStatus(`⚠️ ${res?.error || 'Sekme sesi başlatılamadı.'}`, 'error');
       }
@@ -159,18 +153,17 @@ btnToggle?.addEventListener('click', async () => {
     // KAYDI BİTİR VE ÖZETLE
     isRecording = false;
     clearInterval(timerInterval);
-    clearInterval(autoSlideInterval);
 
     const totalSeconds = Math.max(10, Math.floor((Date.now() - recordingStartTime) / 1000));
 
     btnToggle.className = 'btn btn-record';
     recordIcon.textContent = '🔴';
-    recordText.textContent = 'Canlı Dersi Dinle & Otomatik Slayt Yakala';
+    recordText.textContent = 'Canlı Dersi Dinle ve Not Al';
     recordTimer.style.display = 'none';
     btnSnap.style.display = 'none';
 
     showStatus(
-      `⏳ Ders kaydı tamamlandı (${formatSeconds(totalSeconds)}). Yapay zeka ses ve ${capturedSlides.length} slaytı analiz ediyor...`
+      `⏳ Ders bitti (${formatSeconds(totalSeconds)}). Yapay zeka konuşmaları ve ${capturedSlides.length} slayttaki formülleri inceleyerek ders kitabı notunu hazırlıyor...`
     );
 
     chrome.runtime.sendMessage({ type: 'STOP_TAB_RECORDING' }, async (stopRes) => {
@@ -190,25 +183,19 @@ btnToggle?.addEventListener('click', async () => {
   }
 });
 
-// 4. Manuel Anlık Slayt Butonu
+// 4. Hoca Vurgusu Slayt Butonu (veya Klavyeden Kısayol)
 btnSnap?.addEventListener('click', () => {
-  captureSlide('Öğrenci Tarafından İşaretlenen Slayt');
-  showStatus('📸 Slayt nota eklendi!', 'success');
-  setTimeout(() => {
-    if (isRecording) {
-      showStatus('🔴 Canlı ders dinleniyor...', 'info');
-    }
-  }, 2000);
+  captureSlide('Hoca Tarafından Vurgulanan Kritik Slayt');
 });
 
-// 5. Sunucuya Gönderme ve Not Çıkarma
+// 5. Sunucuya Gönderme ve Ders Notu Çıkarma
 async function gonderSunucuya(payload) {
   const out = document.getElementById('output-area');
   out.innerHTML = `
     <div class="result-card">
-      <div style="font-weight: 700; margin-bottom: 6px;">🧠 Notlar Hazırlanıyor...</div>
+      <div style="font-weight: 700; margin-bottom: 6px;">🧠 Ders Kitabı Özeti Üretiliyor...</div>
       <p style="color: var(--text-muted); font-size: 0.82rem;">
-        Gemini 2.5 Flash ses dökümünü ve slaytları inceliyor, sınav sorularını tahmin ediyor.
+        Gemini 2.5 Flash gereksiz selamlaşmaları ve boş lafları eliyor, dersi konu konu akademik pedagojiyle derliyor.
       </p>
     </div>`;
 
@@ -230,7 +217,7 @@ async function gonderSunucuya(payload) {
     const data = await res.json();
     if (res.ok && data.summary) {
       renderSummary(data.summary);
-      showStatus('✅ Ders notu başarıyla çıkarıldı!', 'success');
+      showStatus('✅ Akademik ders notu başarıyla çıkarıldı!', 'success');
     } else {
       showStatus(`Hata: ${data.message || 'Özet üretilemedi.'}`, 'error');
     }
@@ -250,33 +237,63 @@ function renderSummary(summary) {
         🎓 ${summary.title}
       </div>
       <div style="font-size: 0.74rem; color: var(--success); font-family: var(--font-mono); margin-bottom: 10px;">
-        ⚡ %${summary.cost.savedPercent} Tasarruf | ${Math.round(summary.durationSeconds / 60)} dk kayıt | ${summary.slides.length} slayt
+        ⚡ %${summary.cost.savedPercent} Tasarruf | ${Math.round(summary.durationSeconds / 60)} dk | ${summary.slides.length} slayt incelendi
       </div>
 
-      <div style="padding: 8px 10px; background: var(--surface-inset); border-radius: 6px; font-size: 0.82rem; margin-bottom: 12px;">
-        <strong>💡 Özet:</strong> ${summary.quick.oneLiner}
+      <!-- 1. HAP ÖZET -->
+      <div style="padding: 10px 12px; background: var(--surface-inset); border-radius: 6px; font-size: 0.84rem; margin-bottom: 14px; border-left: 3px solid var(--accent);">
+        <strong>📖 Dersin Özü:</strong>
+        <p style="margin-top: 4px; color: var(--text-primary);">${summary.quick.oneLiner}</p>
       </div>
 
-      <h4 style="font-size: 0.86rem; margin-bottom: 6px;">⚡ Kritik Notlar</h4>
-      <div style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px;">
-        ${summary.quick.bullets
+      <!-- 2. DETAYLI DERS KİTABI ANLATIMI -->
+      <h4 style="font-size: 0.9rem; margin-bottom: 8px;">📋 Detaylı Ders Kitabı Anlatımı</h4>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
+        ${summary.detailed.sections
           .map(
-            (b) => `
-          <div style="font-size: 0.82rem;">
-            <span class="ts">${b.timestamp}</span> ${b.text}
+            (sec) => `
+          <div style="padding: 8px 10px; background: var(--surface-inset); border-radius: 6px; border: 1px solid var(--border-subtle);">
+            <div style="font-weight: 700; font-size: 0.85rem; margin-bottom: 4px;">
+              <span class="ts">${sec.timestamp}</span> ${sec.heading}
+            </div>
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 6px;">${sec.summary}</p>
+            <ul style="padding-left: 1rem; font-size: 0.8rem; color: var(--text-primary);">
+              ${sec.keyPoints.map((kp) => `<li>${kp}</li>`).join('')}
+            </ul>
           </div>`
           )
           .join('')}
       </div>
 
-      <h4 style="font-size: 0.86rem; margin-bottom: 6px;">🎯 Sınavda Çıkabilecek Sorular</h4>
-      <div style="display: flex; flex-direction: column; gap: 6px;">
+      <!-- 3. DERS İÇİ DUYURULAR VE TARİHLER (HOCANIN BİLGİLENDİRMELERİ) -->
+      ${
+        summary.quick.actionItems && summary.quick.actionItems.length > 0
+          ? `
+        <h4 style="font-size: 0.9rem; margin-bottom: 6px; color: var(--warning);">📌 Ders İçi Duyurular, Ödev & Sınav Tarihleri</h4>
+        <div style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px;">
+          ${summary.quick.actionItems
+            .map(
+              (a) => `
+            <div style="padding: 6px 9px; background: var(--surface-inset); border-radius: 6px; border-left: 3px solid var(--warning); font-size: 0.82rem;">
+              <span class="ts">${a.timestamp}</span>
+              <strong>${a.task}</strong>
+              ${a.due ? `<span style="color: var(--warning); margin-left: 6px; font-weight: 600;">[${a.due}]</span>` : ''}
+            </div>`
+            )
+            .join('')}
+        </div>`
+          : ''
+      }
+
+      <!-- 4. OLASI SINAV SORULARI VE CEVAPLARI -->
+      <h4 style="font-size: 0.9rem; margin-bottom: 8px;">🎯 Sınavda Çıkabilecek Sorular & Cevapları</h4>
+      <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px;">
         ${summary.lecture.examQuestions
           .map(
             (q) => `
           <div class="exam-box">
             <div style="font-weight: 600; font-size: 0.82rem;">❓ ${q.question}</div>
-            <div style="color: var(--success); font-size: 0.8rem; margin-top: 3px;">
+            <div style="color: var(--success); font-size: 0.8rem; margin-top: 4px;">
               ✅ <strong>Cevap:</strong> ${q.answer}
             </div>
           </div>`
@@ -284,14 +301,15 @@ function renderSummary(summary) {
           .join('')}
       </div>
 
+      <!-- 5. AKSİYON BUTONLARI -->
       <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; gap: 6px;">
-        <button class="btn" id="btn-copy-summary" style="font-size: 0.78rem;">📲 WhatsApp İçin Kopyala</button>
+        <button class="btn" id="btn-copy-summary" style="font-size: 0.78rem;">📲 Notları Kopyala</button>
       </div>
     </div>
   `;
 
   document.getElementById('btn-copy-summary')?.addEventListener('click', () => {
-    const text = `${summary.title}\n\n${summary.quick.oneLiner}\n\n📌 Önemli:\n${summary.quick.bullets.map((b) => `• [${b.timestamp}] ${b.text}`).join('\n')}`;
+    const text = `${summary.title}\n\n${summary.quick.oneLiner}\n\n📋 Detaylı Özet:\n${summary.detailed.sections.map((s) => `• ${s.heading}: ${s.summary}`).join('\n')}\n\n📌 Duyurular:\n${summary.quick.actionItems.map((a) => `• ${a.task}`).join('\n')}`;
     navigator.clipboard.writeText(text);
     showStatus('Panoya kopyalandı!', 'success');
   });

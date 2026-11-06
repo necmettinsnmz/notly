@@ -505,8 +505,20 @@ body {
   font-weight: 600;
 }
 
-/* YAZDIRMA (PDF DERS NOTU) */
+/* YAZDIRMA (PDF DERS NOTU) - KOYU MOD KORUMALI & KUSURSUZ OKUNABİLİR */
 @media print {
+  *, *::before, *::after {
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    border-color: #d1d5db !important;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+  }
   .navbar,
   .input-section,
   .export-bar,
@@ -515,12 +527,27 @@ body {
   .quick-demos {
     display: none !important;
   }
-  body {
+  .card, .bullet-item, .exam-card, .slide-card {
+    border: 1px solid #d1d5db !important;
     background: #ffffff !important;
     color: #000000 !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 0.8rem !important;
+    padding: 0.8rem !important;
   }
-  .card {
-    border: none !important;
-    padding: 0 !important;
+  .timestamp-chip {
+    border: 1px solid #4b5563 !important;
+    color: #111827 !important;
+    background: #f3f4f6 !important;
+    font-weight: 700 !important;
+  }
+  .exam-answer {
+    color: #065f46 !important;
+    border-top: 1px dashed #9ca3af !important;
+    font-weight: 600 !important;
+  }
+  p, li, span, h1, h2, h3, h4 {
+    color: #000000 !important;
   }
 }

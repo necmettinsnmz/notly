@@ -223,10 +223,18 @@ function uretYerelAkilliOzet(
   temizMetin: string
 ): Omit<BirlesikOzetSonucu, 'id' | 'createdAt' | 'cost' | 'usedLiveApi'> {
   const tr = istek.language === 'tr';
-  const satirlar = temizMetin
+  const hamSatirlar = temizMetin
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean);
+
+  // "Merhaba arkadaşlar", "hoş geldiniz" gibi ders dışı selamlama ve boş lafları filtrele
+  const satirlar = hamSatirlar.filter((s) => {
+    const metinKismi = s.replace(/^\[\d{2}:\d{2}(?::\d{2})?\]\s*/, '').trim();
+    return !/^(merhaba|selam|günaydın|iyi günler|nasılsınız|arkadaşlar|hoş geldiniz|hello|welcome|hi everyone)/i.test(
+      metinKismi
+    );
+  });
 
   const parcaliSatirlar =
     satirlar.length > 0
@@ -243,26 +251,26 @@ function uretYerelAkilliOzet(
           {
             timestamp: '00:10',
             text: tr
-              ? `${istek.title} kaydının giriş bölümü ve temel hedefleri aktarıldı.`
-              : `Introduction and core objectives of ${istek.title} were presented.`,
+              ? `${istek.title} konusunun teorik temelleri ve temel aksiyomları açıklandı.`
+              : `Theoretical foundations and core axioms of ${istek.title} are established.`,
           },
           {
             timestamp: '02:30',
             text: tr
-              ? 'Konunun teorik altyapısı ve pratik uygulama örnekleri detaylandırıldı.'
-              : 'Theoretical foundations and practical examples were explained in detail.',
+              ? 'Konunun pratik uygulama adımları, formül analizleri ve problem çözümleri incelendi.'
+              : 'Practical application steps, formula proofs, and case solutions were detailed.',
           },
           {
             timestamp: '06:15',
             text: tr
-              ? 'Sınav/teslim tarihi ve dikkat edilmesi gereken kritik noktalar vurgulandı.'
-              : 'Exam/submission deadlines and critical pitfalls were highlighted.',
+              ? 'Sınavda çıkabilecek kritik soru kalıpları ve metodolojik adımlar özetlendi.'
+              : 'Exam-relevant problem patterns and analytical steps were synthesized.',
           },
         ];
 
   const oneLiner = tr
-    ? `"${istek.title}" içeriği; temel kavramları, kritik vurguları ve yapılması gereken eylem adımlarını kapsayan yapılandırılmış bir özete dönüştürüldü.`
-    : `"${istek.title}" has been synthesized into key takeaways, core concepts, exam prep questions, and action items.`;
+    ? `"${istek.title}" dersinin temel teorik prensipleri, formülleri ve uygulama adımları akademik ders kitabı standardında derlendi.`
+    : `"${istek.title}" lecture core principles, analytical formulas, and methodologies structured in academic textbook prose.`;
 
   const bullets: ZamanliMadde[] = parcaliSatirlar.slice(0, 5).map((item) => ({
     timestamp: item.timestamp,
@@ -433,10 +441,46 @@ export async function uretAkilliOzet(
         });
       }
 
-      const sistemMetni = `Sen öğrencilerin ve profesyonellerin ses/video kayıtlarını analiz eden uzman bir asistansın.
-Başlık: "${istek.title}"
+      // Ekteki slayt ekran görüntülerini Gemini'ye multimodal görsel veri olarak ver
+      if (istek.slides && istek.slides.length > 0) {
+        for (const slide of istek.slides) {
+          if (slide.imageUrl && slide.imageUrl.includes(',')) {
+            const rawBase64 = slide.imageUrl.split(',')[1];
+            parcalar.push({
+              inlineData: {
+                data: rawBase64,
+                mimeType: 'image/jpeg',
+              },
+            });
+            parcalar.push({
+              text: `[DERS SLAYTI - Zaman: ${slide.timestamp}] ${slide.caption || 'Slayt Ekran Görüntüsü'}`,
+            });
+          }
+        }
+      }
+
+      const sistemMetni = `Sen üniversite düzeyinde dersleri analiz eden, akademik yayın ve ders kitabı pedagojisine hakim uzman bir profesör ve baş asistansın.
+Ders Başlığı: "${istek.title}"
 ${dilTalimati}
-Lütfen içeriği analiz et ve şemaya uygun olarak 4 modu (quick, detailed, lecture, transcript) eksiksiz doldur.
+
+### KESİN PEDAGOJİK VE YAZIM KURALLARI:
+1. AKADEMİK DERS KİTABI ÜSLUBU:
+   - "Merhaba arkadaşlar", "nasılsınız", "bugün hava güzel", ders dışı espriler ve dolgu lafları TAMAMEN ÇIKAR.
+   - Özetler doğrudan konuyu sıfırdan adım adım öğreten, üniversite ders kitabı ciddiyetinde ve akıcılığında olmalıdır.
+2. DETAYLI ÖZET (detailed.sections):
+   - Konu başlıklarına ayrılmış; tanımları, kuralları, mekanizmaları ve neden-sonuç ilişkilerini hiçbir boşluk bırakmadan eksiksiz açıklayan bir ders kitabı bölümü gibi yazılmalıdır.
+3. HAP ÖZET (quick.oneLiner & quick.bullets):
+   - Konunun ana fikrini, temel prensibini ve kritik kavramsal özetini doğrudan aktarır.
+4. DERS İÇİ İDARİ DUYURULAR VE TARİHLER (quick.actionItems):
+   - Hocanın ders içinde söylediği "vize şu gün", "proje teslimi cuma", "ödev raporunu sisteme yükleyin", "yoklama alınacak" gibi idari bilgileri dersin akademik özetine KARIŞTIRMA!
+   - Bunları yalnızca 'actionItems' alanında, tarih ve saatleriyle birlikte net bir yapılacaklar/duyurular listesi olarak belirt.
+5. GÖRSEL VE SLAYT ENTEGRASYONU (MULTIMODAL VISION):
+   - Konuşmada "ekranda gördüğünüz gibi", "buradaki formülden anlaşıldığı üzere", "tabloda dikkat ederseniz" denildiğinde ekteki slayt ve ekran görüntülerini detaylıca incele.
+   - Slaytlarda geçen matematiksel formülleri, şemaları, kod parçalarını ve tanımları doğrudan detaylı ders özetine dahil et ve konuyu açıklamak için kullan.
+6. TAM METİN (transcript.segments):
+   - Konuşulanları saniye saniye zaman damgalarıyla dök.
+
+Lütfen içeriği yukarıdaki kurallara göre analiz et ve JSON şemasına birebir uygun doldur.
 Zaman damgalarını MM:SS formatında ver.
 ${temizMetin ? `\nİçerik Dökümü:\n${temizMetin}` : ''}`;
 
