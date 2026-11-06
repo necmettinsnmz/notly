@@ -1,122 +1,68 @@
 /**
  * NOTLY CHROME EKLENTİSİ — ARKA PLAN SERVİSİ (BACKGROUND SERVICE WORKER)
  * ----------------------------------------------------------------------
- * 1. Eklenti ikonuna tıklanınca sağ tarafta Yan Paneli (Side Panel) açar.
- * 2. Aktif sekmedeki videonun altyazısını, süresini ve o anki slayt görüntüsünü yakalar.
- * 3. İndirilemeyen videolar için sekme sesini (tabCapture) Offscreen belgeye yönlendirir.
+ * 1. Eklenti ikonuna tıklanınca Yan Paneli (Side Panel) açar.
+ * 2. chrome.tabs.captureVisibleTab ile sekmede görünen ders slaytını (Zoom, Teams, Moodle, BBB vb.) anında fotoğraflar.
+ * 3. chrome.tabCapture ile sekme sesini yakalayıp Offscreen belgeye aktarır.
  */
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((err) => console.error('SidePanel hatası:', err));
 
+async function ensureOffscreenDocument() {
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+  });
+
+  if (existingContexts.length > 0) {
+    return;
+  }
+
+  await chrome.offscreen.createDocument({
+    url: 'offscreen.html',
+    reasons: ['USER_MEDIA'],
+    justification: 'Sekmedeki ders videosunun sesini MediaRecorder ile kaydeder.',
+  });
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  // 1. Sayfadaki videodan hazır altyazı ve slayt karesi yakala
-  if (message.type === 'INSPECT_ACTIVE_VIDEO') {
+  // 1. Sekmedeki Görünen Ekranı / Slaytı Fotoğrafla (Tüm canlı ders sistemleri için CORS hatasız çalışır!)
+  if (message.type === 'CAPTURE_VISIBLE_TAB') {
     chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
       const activeTab = tabs[0];
       if (!activeTab || !activeTab.id) {
-        sendResponse({ ok: false, error: 'Aktif sekme bulunamadı.' });
+        sendResponse({ ok: false, error: 'Aktif ders sekmesi bulunamadı.' });
         return;
       }
 
       try {
-        const results = await chrome.scripting.executeScript({
-          target: { tabId: activeTab.id },
-          func: () => {
-            const video = document.querySelector('video');
-            const pageTitle = document.title || 'Ders Videosu';
-
-            if (!video) {
-              return {
-                hasVideo: false,
-                pageTitle,
-                durationSeconds: 300,
-                currentTime: 0,
-                captionsText: '',
-                slideDataUrl: null,
-              };
-            }
-
-            // Videonun o anki karesini (Slayt) Canvas ile yakala
-            let slideDataUrl = null;
-            try {
-              const canvas = document.createElement('canvas');
-              canvas.width = 480;
-              canvas.height = 270;
-              const ctx = canvas.getContext('2d');
-              if (ctx && video.videoWidth > 0) {
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                slideDataUrl = canvas.toDataURL('image/jpeg', 0.78);
-              }
-            } catch {
-              // CORS veya DRM korumalı videoda kare yakalanamazsa sessizce geç
-              slideDataUrl = null;
-            }
-
-            // HTML5 textTracks (altyazılar) varsa oku
-            const satirlar = [];
-            if (video.textTracks && video.textTracks.length > 0) {
-              for (let i = 0; i < video.textTracks.length; i++) {
-                const track = video.textTracks[i];
-                if (track.cues && track.cues.length > 0) {
-                  for (let j = 0; j < track.cues.length; j++) {
-                    const cue = track.cues[j];
-                    const dk = String(Math.floor(cue.startTime / 60)).padStart(2, '0');
-                    const sn = String(Math.floor(cue.startTime % 60)).padStart(2, '0');
-                    satirlar.push(`[${dk}:${sn}] ${cue.text}`);
-                  }
-                  break;
-                }
-              }
-            }
-
-            return {
-              hasVideo: true,
-              pageTitle,
-              durationSeconds: Math.round(video.duration || 600),
-              currentTime: Math.round(video.currentTime || 0),
-              captionsText: satirlar.join('\n'),
-              slideDataUrl,
-            };
-          },
+        const dataUrl = await chrome.tabs.captureVisibleTab(activeTab.windowId, {
+          format: 'jpeg',
+          quality: 75,
         });
 
-        sendResponse({ ok: true, data: results[0]?.result });
+        sendResponse({
+          ok: true,
+          dataUrl,
+          title: activeTab.title || 'Canlı Ders',
+        });
       } catch (err) {
-        sendResponse({ ok: false, error: String(err) });
+        sendResponse({
+          ok: false,
+          error: `Ekran görüntüsü alınamadı: ${err instanceof Error ? err.message : String(err)}`,
+        });
       }
     });
     return true;
   }
 
-  // 2. Zaman damgasına tıklanınca sayfadaki videoyu o saniyeye sar
-  if (message.type === 'SEEK_ACTIVE_VIDEO') {
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-      const activeTab = tabs[0];
-      if (!activeTab || !activeTab.id) return;
-      await chrome.scripting.executeScript({
-        target: { tabId: activeTab.id },
-        args: [message.seconds],
-        func: (targetSeconds) => {
-          const video = document.querySelector('video');
-          if (video) {
-            video.currentTime = targetSeconds;
-            video.play().catch(() => {});
-          }
-        },
-      });
-      sendResponse({ ok: true });
-    });
-    return true;
-  }
-
-  // 3. Sekme sesini kaydetmeyi başlat (İndirilemeyen okul videoları için)
+  // 2. Sekme Sesini Kaydetmeye Başla
   if (message.type === 'START_TAB_RECORDING') {
     chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
       const activeTab = tabs[0];
       if (!activeTab || !activeTab.id) {
-        sendResponse({ ok: false, error: 'Sekme bulunamadı.' });
+        sendResponse({ ok: false, error: 'Aktif ders sekmesi bulunamadı.' });
         return;
       }
 
@@ -124,39 +70,56 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         if (chrome.runtime.lastError || !streamId) {
           sendResponse({
             ok: false,
-            error: chrome.runtime.lastError?.message || 'Sekme sesi alınamadı.',
+            error:
+              chrome.runtime.lastError?.message ||
+              'Sekme sesi izin vermedi. Lütfen sekmede ses çaldığından emin olun.',
           });
           return;
         }
 
-        const contexts = await chrome.runtime.getContexts({
-          contextTypes: ['OFFSCREEN_DOCUMENT'],
-        });
+        try {
+          await ensureOffscreenDocument();
 
-        if (contexts.length === 0) {
-          await chrome.offscreen.createDocument({
-            url: 'offscreen.html',
-            reasons: ['USER_MEDIA'],
-            justification: 'Sekmedeki ders videosunun sesini özetlemek için kaydeder.',
+          // Offscreen belgeye başlat emri gönder
+          chrome.runtime.sendMessage(
+            { target: 'offscreen', type: 'START_RECORDING', streamId },
+            (response) => {
+              if (chrome.runtime.lastError) {
+                sendResponse({
+                  ok: false,
+                  error: `Offscreen iletişim hatası: ${chrome.runtime.lastError.message}`,
+                });
+                return;
+              }
+              sendResponse(response || { ok: true });
+            }
+          );
+        } catch (err) {
+          sendResponse({
+            ok: false,
+            error: `Kayıt başlatılamadı: ${err instanceof Error ? err.message : String(err)}`,
           });
         }
-
-        chrome.runtime.sendMessage(
-          { type: 'OFFSCREEN_START', streamId },
-          (offscreenRes) => {
-            sendResponse(offscreenRes || { ok: true });
-          }
-        );
       });
     });
     return true;
   }
 
-  // 4. Sekme sesi kaydını bitir ve base64 sesi al
+  // 3. Sekme Ses Kaydını Bitir ve Sesi Al
   if (message.type === 'STOP_TAB_RECORDING') {
-    chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP' }, (offscreenRes) => {
-      sendResponse(offscreenRes);
-    });
+    chrome.runtime.sendMessage(
+      { target: 'offscreen', type: 'STOP_RECORDING' },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({
+            ok: false,
+            error: chrome.runtime.lastError.message,
+          });
+          return;
+        }
+        sendResponse(response || { ok: false, error: 'Offscreen yanıt vermedi.' });
+      }
+    );
     return true;
   }
 });

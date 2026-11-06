@@ -3,108 +3,208 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Notly — Ders Asistanı</title>
+    <title>Notly — Akıllı Ders Dinleyici</title>
     <style>
       :root {
         --canvas: #090a0d;
         --surface: #111318;
         --surface-hover: #16181f;
+        --surface-inset: #0d0f13;
         --border-subtle: rgba(255, 255, 255, 0.08);
+        --border-strong: rgba(255, 255, 255, 0.16);
         --text-primary: #f4f4f5;
         --text-muted: #8e939e;
         --accent: #3b82f6;
         --accent-hover: #2563eb;
         --success: #10b981;
+        --warning: #f59e0b;
         --danger: #ef4444;
         --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', monospace;
       }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
         background: var(--canvas);
         color: var(--text-primary);
-        margin: 0;
         padding: 14px;
         line-height: 1.5;
         -webkit-font-smoothing: antialiased;
       }
+
       .header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding-bottom: 10px;
+        padding-bottom: 12px;
         border-bottom: 1px solid var(--border-subtle);
         margin-bottom: 14px;
       }
+
       .logo {
         font-weight: 750;
-        font-size: 1rem;
+        font-size: 1.05rem;
         letter-spacing: -0.02em;
-        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
+
+      .server-pill {
+        font-size: 0.72rem;
+        font-family: var(--font-mono);
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: var(--surface-inset);
+        border: 1px solid var(--border-subtle);
+        color: var(--text-muted);
+      }
+
+      .server-pill.online {
+        color: var(--success);
+        border-color: rgba(16, 185, 129, 0.3);
+      }
+
       .btn {
         width: 100%;
-        padding: 8px 12px;
+        padding: 10px 14px;
         border-radius: 8px;
         border: 1px solid var(--border-subtle);
         background: var(--surface);
         color: var(--text-primary);
         font-weight: 600;
-        font-size: 0.82rem;
+        font-size: 0.85rem;
         cursor: pointer;
         margin-bottom: 8px;
-        text-align: left;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
         transition: all 0.12s ease;
       }
+
       .btn:hover {
         background: var(--surface-hover);
-        border-color: rgba(255, 255, 255, 0.18);
+        border-color: var(--border-strong);
       }
-      .btn-primary {
+
+      .btn-record {
         background: var(--accent);
         border: 1px solid var(--accent-hover);
-        color: #fff;
-        text-align: center;
+        color: #ffffff;
+        font-size: 0.9rem;
+        padding: 12px 14px;
       }
-      .btn-primary:hover {
+
+      .btn-record:hover {
         background: var(--accent-hover);
       }
-      .btn-danger {
-        background: rgba(239, 68, 68, 0.15);
-        color: var(--danger);
-        border-color: rgba(239, 68, 68, 0.35);
-        text-align: center;
+
+      .btn-recording {
+        background: var(--danger);
+        border: 1px solid #b91c1c;
+        color: #ffffff;
+        animation: pulse 1.8s infinite;
       }
-      .card {
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.85; }
+      }
+
+      .timer-badge {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        background: rgba(0, 0, 0, 0.35);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+
+      .status-box {
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: var(--surface-inset);
+        border: 1px solid var(--border-subtle);
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        margin-bottom: 12px;
+        display: none;
+      }
+
+      .slides-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin: 12px 0 6px;
+      }
+
+      .slides-track {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding-bottom: 6px;
+        min-height: 40px;
+      }
+
+      .slide-thumb {
+        position: relative;
+        flex-shrink: 0;
+        width: 110px;
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid var(--border-subtle);
+      }
+
+      .slide-thumb img {
+        width: 100%;
+        display: block;
+      }
+
+      .slide-ts {
+        position: absolute;
+        bottom: 2px;
+        left: 2px;
+        font-family: var(--font-mono);
+        font-size: 0.65rem;
+        font-weight: 700;
+        background: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
+
+      .result-card {
         background: var(--surface);
         border: 1px solid var(--border-subtle);
         border-radius: 10px;
-        padding: 12px;
-        margin-top: 12px;
+        padding: 14px;
+        margin-top: 14px;
         font-size: 0.86rem;
       }
+
       .ts {
         font-family: var(--font-mono);
         background: rgba(59, 130, 246, 0.12);
         color: var(--accent);
-        padding: 2px 5px;
+        padding: 1px 5px;
         border-radius: 4px;
         cursor: pointer;
         font-size: 0.74rem;
         font-weight: 700;
-        border: 1px solid rgba(59, 130, 246, 0.25);
       }
-      .ts:hover {
-        background: var(--accent);
-        color: #fff;
-      }
-      .slides {
-        display: flex;
-        gap: 8px;
-        overflow-x: auto;
-        margin: 8px 0;
-      }
-      .slides img {
-        width: 130px;
+
+      .exam-box {
+        margin-top: 8px;
+        padding: 8px 10px;
+        background: var(--surface-inset);
         border-radius: 6px;
         border: 1px solid var(--border-subtle);
       }
@@ -112,15 +212,35 @@
   </head>
   <body>
     <div class="header">
-      <div class="logo">⚡ Notly Yan Panel</div>
-      <span id="status-badge" style="font-size: 0.75rem; color: var(--success); font-family: var(--font-mono);">● Tasarruf Motoru</span>
+      <div class="logo">⚡ Notly Scribe</div>
+      <span id="server-status" class="server-pill">○ Sunucu Aranıyor...</span>
     </div>
 
-    <button class="btn" id="btn-capture-slide">📸 Şu Anki Ders Slaytını Nota Ekle</button>
-    <button class="btn" id="btn-record-tab">🎙️ İndirilemeyen Dersin Sesini Dinle</button>
-    <button class="btn btn-primary" id="btn-summarize-tab">✨ Bu Dersi Şimdi Özetle</button>
+    <!-- ANA KAYIT VE DİNLEME BUTONU -->
+    <button class="btn btn-record" id="btn-toggle-record">
+      <span id="record-icon">🔴</span>
+      <span id="record-text">Canlı Dersi Dinle & Otomatik Slayt Yakala</span>
+      <span id="record-timer" class="timer-badge" style="display: none;">00:00</span>
+    </button>
 
-    <div id="slides-preview" class="slides"></div>
+    <!-- ANLIK MANUEL SLAYT BUTONU -->
+    <button class="btn" id="btn-snap-slide" style="display: none;">
+      📸 Şu Anki Slaytı Hemen Yakala
+    </button>
+
+    <!-- DURUM / BİLGİ KUTUSU -->
+    <div id="status-box" class="status-box"></div>
+
+    <!-- YAKALANAN SLAYTLAR ŞERİDİ -->
+    <div id="slides-section" style="display: none;">
+      <div class="slides-header">
+        <span>🖼️ Otomatik Yakalanan Slaytlar</span>
+        <span id="slide-count" style="font-family: var(--font-mono);">0 slayt</span>
+      </div>
+      <div id="slides-track" class="slides-track"></div>
+    </div>
+
+    <!-- ÖZET VE SINAV NOTU SONUÇLARI -->
     <div id="output-area"></div>
 
     <script src="sidepanel.js"></script>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Notly — Ders Videosu & Sekme Sesi Özetleyici",
-  "version": "0.1.0",
-  "description": "Okul sitelerindeki (Moodle, Canvas vb.) indirilemeyen videoları ve YouTube derslerini dinler, slaytları yakalar ve sınav notu çıkarır.",
+  "name": "Notly — Akıllı Ders Dinleyici & Sınav Notu",
+  "version": "0.1.1",
+  "description": "Canlı dersleri (Moodle, Zoom, Teams, YouTube) dinler, slaytları otomatik yakalar ve sınav notu çıkarır.",
   "permissions": [
     "tabCapture",
     "offscreen",
@@ -10,6 +10,9 @@
     "activeTab",
     "scripting",
     "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
