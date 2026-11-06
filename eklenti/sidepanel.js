@@ -78,7 +78,10 @@ function captureSlide(customCaption) {
       renderSlides();
       showStatus(`📸 Slayt [${ts}] yapay zekaya incelenmek üzere kaydedildi!`, 'success');
     } else {
-      showStatus(`⚠️ Slayt yakalanamadı: ${res?.error || 'Sekme açık değil'}`, 'error');
+      // Başlangıç otomatik karesi alınamazsa ses kaydının yeşil durum mesajını ezme
+      if (customCaption !== 'Ders Başlangıç Referans Slaytı') {
+        showStatus(`⚠️ Slayt yakalanamadı: ${res?.error || 'Sekme açık değil'}`, 'error');
+      }
     }
   });
 }
