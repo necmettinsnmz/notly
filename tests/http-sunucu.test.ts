@@ -62,4 +62,24 @@ describe('Aşama 2: Gizli Köprü Sunucu HTTP API Testleri', () => {
     expect(logsData.usageHistory.length).toBeGreaterThan(0);
     expect(logsData.usageHistory[0].title).toBe('Veri Yapıları - Ağaçlar (Trees)');
   });
+
+  it('POST /api/settings/key geçersiz API anahtarı formatını HTTP 400 ile reddetmeli', async () => {
+    const resShort = await fetch(`${baseUrl}/api/settings/key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: 'short' }),
+    });
+    expect(resShort.status).toBe(400);
+    const dataShort = await resShort.json();
+    expect(dataShort.ok).toBe(false);
+
+    const resWrongPrefix = await fetch(`${baseUrl}/api/settings/key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: 'invalid_prefix_123456789012345' }),
+    });
+    expect(resWrongPrefix.status).toBe(400);
+    const dataWrong = await resWrongPrefix.json();
+    expect(dataWrong.ok).toBe(false);
+  });
 });

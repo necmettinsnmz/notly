@@ -1,9 +1,6 @@
 /**
- * ORTAK AYARLAR VE ÇOKLU DİL (TR / EN) SÖZLÜĞÜ
- * ---------------------------------------------
- * Bu dosya projenin "Kumanda Merkezi"dir.
- * Uygulamanın adını, günlük ücretsiz kullanım hakkını veya ekrandaki yazıları
- * değiştirmek istediğinde sadece bu dosyadaki değerleri değiştirmen yeterlidir!
+ * Core Application Configuration & Localization Dictionary (TR / EN)
+ * Centralized runtime parameters, token pricing constants, and i18n strings.
  */
 
 export type DilKodu = 'tr' | 'en';
@@ -11,34 +8,34 @@ export type OzetModu = 'quick' | 'detailed' | 'lecture' | 'transcript';
 export type TasarrufYontemi = 'caption' | 'compressed_audio' | 'raw_audio';
 
 export const APP_CONFIG = {
-  /** Uygulamanın görünen adı — buradan değiştirdiğinde tüm sitede ve eklentide değişir */
+  /** Application display name across Web UI and Chrome Extension */
   appName: 'Notly',
 
-  /** Sürüm numarası */
-  version: '0.1.0',
+  /** Semantic version */
+  version: '1.0.0',
 
-  /** Ücretsiz bir kullanıcının 24 saat içinde yapabileceği maksimum özet sayısı */
+  /** Maximum free summaries allowed per client within a 24-hour window */
   dailyFreeLimit: 3,
 
-  /** Google AI Studio'dan aldığın başlangıç kredisi ($) */
+  /** Initial API credit pool baseline (USD) for usage tracking */
   initialCreditUsd: 60.0,
 
-  /** Dolar -> TL tahmini kur (Geliştirici panelinde TL karşılığını görmek için) */
+  /** Approximate USD to TRY conversion rate for dual-currency cost reporting */
   usdToTryRate: 36.5,
 
-  /** Kullanılacak yapay zeka modeli (Tek satırdan değiştirilebilir) */
+  /** Primary multimodal Gemini model identifier */
   defaultModel: 'gemini-2.5-flash',
 
-  /** Sesi sıkıştırırken varsayılan hızlandırma oranı (1.5x = %33 daha kısa süre) */
+  /** Audio preprocessing speed factor for token reduction (1.5x = ~33% duration cut) */
   defaultSpeedMultiplier: 1.5,
 
-  /** Fiyatlandırma sabitleri (1 Milyon Token başına USD) */
+  /** Gemini pricing parameters (USD per 1M tokens) */
   pricing: {
-    audioInputPerMillionUsd: 0.70, // Ses girdisi (1M token)
-    textInputPerMillionUsd: 0.15,  // Metin/Altyazı girdisi (1M token - 4.5x daha ucuz!)
-    textOutputPerMillionUsd: 0.60, // Üretilen özet çıktısı (1M token)
-    audioTokensPerSecond: 25,      // 1 saniye ses = ~25 token
-    captionTokensPerSecond: 3.5,   // 1 saniye konuşma altyazısı = ~3.5 metin tokeni
+    audioInputPerMillionUsd: 0.70, // Audio input (1M tokens)
+    textInputPerMillionUsd: 0.15,  // Caption/text input (1M tokens)
+    textOutputPerMillionUsd: 0.60, // Generated output (1M tokens)
+    audioTokensPerSecond: 25,      // 1s audio ≈ 25 tokens
+    captionTokensPerSecond: 3.5,   // 1s captions ≈ 3.5 text tokens
   },
 } as const;
 

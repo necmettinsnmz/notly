@@ -486,15 +486,94 @@
 
       .api-pill {
         font-size: 0.68rem;
-        padding: 1px 5px;
+        padding: 2px 6px;
         border-radius: 4px;
         background: var(--surface-inset);
+        border: 1px solid var(--border-subtle);
         color: var(--text-muted);
         font-family: var(--font-mono);
+        cursor: pointer;
+        transition: border-color 0.12s ease;
+      }
+
+      .api-pill:hover {
+        border-color: var(--border-strong);
       }
 
       .api-pill.live {
         color: var(--success);
+        border-color: rgba(16, 185, 129, 0.35);
+      }
+
+      .api-settings-box {
+        background: var(--surface);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 12px;
+        font-size: 0.78rem;
+      }
+
+      .api-settings-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+
+      .api-input {
+        flex: 1;
+        background: var(--surface-inset);
+        border: 1px solid var(--border-subtle);
+        border-radius: 6px;
+        padding: 6px 8px;
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+        font-size: 0.76rem;
+      }
+
+      .api-input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      @media print {
+        *, *::before, *::after {
+          background: #ffffff !important;
+          color: #000000 !important;
+          box-shadow: none !important;
+          text-shadow: none !important;
+          border-color: #d1d5db !important;
+        }
+        body {
+          background: #ffffff !important;
+          color: #000000 !important;
+          padding: 0 !important;
+        }
+        #mini-recording-bar,
+        .header,
+        .mode-switcher,
+        #section-live-lecture,
+        #section-file-upload,
+        #api-settings-box,
+        #status-box,
+        .view-tabs,
+        .summary-actions-bar {
+          display: none !important;
+        }
+        .tab-panel {
+          display: block !important;
+          margin-bottom: 12px !important;
+        }
+        .result-card,
+        .exam-box {
+          border: 1px solid #d1d5db !important;
+          background: #ffffff !important;
+        }
+        .ts {
+          border: 1px solid #4b5563 !important;
+          color: #111827 !important;
+          background: #f3f4f6 !important;
+        }
       }
     </style>
   </head>
@@ -517,11 +596,23 @@
       <div class="header">
         <div class="logo-group">
           <div class="logo">⚡ Notly Scribe</div>
-          <span id="api-status-badge" class="api-pill">Gemini</span>
+          <button id="api-status-badge" class="api-pill" title="API Anahtarını Yapılandır">🔑 Gemini</button>
         </div>
         <div class="header-actions">
           <span id="server-status" class="server-pill">○ Sunucu</span>
           <button id="btn-toggle-compact" class="icon-btn" title="Paneli Küçült">⤡</button>
+        </div>
+      </div>
+
+      <!-- API ANAHTARI YAPILANDIRMA KUTUSU -->
+      <div id="api-settings-box" class="api-settings-box" style="display: none;">
+        <div style="font-weight: 700;">🔑 Gemini API Anahtarı (.env)</div>
+        <div style="color: var(--text-muted); font-size: 0.72rem; margin-top: 2px;">
+          Canlı ses deşifresi ve slayt analizi için Google AI Studio anahtarınızı girin.
+        </div>
+        <div class="api-settings-row">
+          <input type="password" id="ext-api-key-input" class="api-input" placeholder="AIzaSy..." />
+          <button id="ext-btn-save-key" class="mini-btn mini-btn-snap">Kaydet</button>
         </div>
       </div>
 

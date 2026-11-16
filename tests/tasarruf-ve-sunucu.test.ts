@@ -101,4 +101,28 @@ describe('Aşama 2: 4 Modlu Tek Seferde Özetleme ve Dışa Aktarma (WhatsApp & 
     expect(md).toContain('# Proje Toplantısı');
     expect(md).toContain('## 🎯');
   });
+
+  it('API anahtarı olmadan ham ses gönderildiğinde açık kurulum yönergesi döndürmeli', async () => {
+    const oncekiKey = process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    try {
+      const sonuc = await uretAkilliOzet(
+        {
+          title: 'Canlı Ses Kaydı',
+          language: 'tr',
+          durationSeconds: 180,
+          method: 'compressed_audio',
+          mediaBase64: 'data:audio/webm;base64,GkXfo59ChoEBQveBAULygQ8=',
+          mediaMimeType: 'audio/webm',
+        },
+        logger
+      );
+      expect(sonuc.usedLiveApi).toBe(false);
+      expect(sonuc.quick.oneLiner).toContain('GEMINI_API_KEY');
+    } finally {
+      if (oncekiKey !== undefined) {
+        process.env.GEMINI_API_KEY = oncekiKey;
+      }
+    }
+  });
 });

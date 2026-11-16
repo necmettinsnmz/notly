@@ -1,8 +1,7 @@
 /**
- * 4 MODLU AKILLI ÖZETLEYİCİ MOTORU
- * --------------------------------
- * Tek bir çağrıda 4 farklı görünümü (Hap Özet, Detaylı Özet, Ders & Sınav Notu, Tam Transkript)
- * aynı anda üretir. Böylece kullanıcı sekmeler arasında gezerken tekrar tekrar API ücreti ödenmez!
+ * Multimodal 4-Mode Summarization Engine
+ * Generates Quick Summary, Detailed Textbook Notes, Exam Prep Q&A, and Timestamped Transcript
+ * in a single Gemini API pass (or deterministic local text analysis fallback).
  */
 
 import { GoogleGenAI, Type } from '@google/genai';
@@ -216,7 +215,9 @@ const GEMINI_RESPONSE_SCHEMA = {
 };
 
 /**
- * Anahtar henüz girilmediğinde veya çevrimdışı testlerde çalışan akıllı yerel özetleyici
+ * Local fallback & offline text analyzer used when GEMINI_API_KEY is not configured.
+ * Processes VTT/SRT captions or plain transcripts deterministically, and provides
+ * explicit setup guidance when raw audio/video is submitted without a live API key.
  */
 function uretYerelAkilliOzet(
   istek: OzetIstegi,
@@ -228,13 +229,99 @@ function uretYerelAkilliOzet(
     .map((s) => s.trim())
     .filter(Boolean);
 
-  // "Merhaba arkadaşlar", "hoş geldiniz" gibi ders dışı selamlama ve boş lafları filtrele
+  // Filter conversational filler openings ("Merhaba arkadaşlar", "Hello everyone", etc.)
   const satirlar = hamSatirlar.filter((s) => {
     const metinKismi = s.replace(/^\[\d{2}:\d{2}(?::\d{2})?\]\s*/, '').trim();
     return !/^(merhaba|selam|günaydın|iyi günler|nasılsınız|arkadaşlar|hoş geldiniz|hello|welcome|hi everyone)/i.test(
       metinKismi
     );
   });
+
+  const sesVarMetinYok = satirlar.length === 0 && Boolean(istek.mediaBase64);
+
+  if (sesVarMetinYok) {
+    const setupMsg = tr
+      ? 'Ham ses/video kaydı algılandı ancak sunucuda aktif bir GEMINI_API_KEY tanımlı değil. Seslerin kelimesi kelimesine deşifre edilip ders kitabı özetine dönüştürülmesi için Google AI Studio anahtarınızı .env dosyasına veya uygulama içi "⚙️ API Ayarları" paneline ekleyin. (Not: .vtt / .srt altyazı ve metin dosyaları API anahtarı olmadan da analiz edilir.)'
+      : 'Raw audio/video was captured, but no GEMINI_API_KEY is configured on the server. To transcribe spoken audio and analyze captured slides, add your Google AI Studio key in .env or via the in-app API Settings panel. (Note: VTT/SRT captions and text transcripts work offline as well.)';
+
+    const bullets: ZamanliMadde[] = [
+      {
+        timestamp: '00:00',
+        text: tr
+          ? `Ses kaydı (${Math.round((istek.durationSeconds ?? 60) / 60)} dk) ve ${istek.slides?.length ?? 0} slayt karesi yakalandı.`
+          : `Audio capture (${Math.round((istek.durationSeconds ?? 60) / 60)} min) and ${istek.slides?.length ?? 0} slide frame(s) received.`,
+      },
+      {
+        timestamp: '00:01',
+        text: tr
+          ? 'Konuşma tanıma (Speech-to-Text) ve slayt OCR işlemi için GEMINI_API_KEY yapılandırması bekleniyor.'
+          : 'Waiting for GEMINI_API_KEY configuration to run multimodal speech-to-text and slide vision.',
+      },
+    ];
+
+    return {
+      title: istek.title,
+      language: istek.language,
+      durationSeconds: istek.durationSeconds ?? 300,
+      slides: istek.slides ?? [],
+      quick: {
+        oneLiner: setupMsg,
+        bullets,
+        actionItems: [
+          {
+            task: tr
+              ? 'Google AI Studio üzerinden ücretsiz API anahtarı alıp .env veya arayüzdeki API Ayarları alanından kaydedin.'
+              : 'Obtain a Google AI Studio key and save it in .env or via the in-app API Settings input.',
+            due: tr ? 'Tek Seferlik Kurulum' : 'One-Time Setup',
+            timestamp: '00:00',
+          },
+        ],
+      },
+      detailed: {
+        sections: [
+          {
+            heading: tr ? 'API Yapılandırması Gerekli' : 'API Configuration Required',
+            timestamp: '00:00',
+            summary: setupMsg,
+            keyPoints: bullets.map((b) => b.text),
+          },
+        ],
+      },
+      lecture: {
+        concepts: [
+          {
+            term: 'GEMINI_API_KEY',
+            definition: tr
+              ? 'Ham ses/video dosyalarını ve slayt görsellerini analiz etmek için gereken Google Gemini 2.5 Flash anahtarı.'
+              : 'Required to run multimodal Gemini 2.5 Flash inference on raw audio/video and slide images.',
+            timestamp: '00:00',
+          },
+        ],
+        examQuestions: [
+          {
+            question: tr
+              ? 'Canlı ses kaydından tam ders özeti alabilmek için hangi adım gereklidir?'
+              : 'What step is required to generate live transcripts and summaries from audio recordings?',
+            answer: tr
+              ? 'Sunucuya .env veya API Ayarları üzerinden geçerli bir GEMINI_API_KEY tanımlamak.'
+              : 'Configure a valid GEMINI_API_KEY via .env or the in-app API Settings panel.',
+            difficulty: tr ? 'Kolay' : 'Easy',
+            timestamp: '00:00',
+          },
+        ],
+        instructorHighlights: bullets,
+      },
+      transcript: {
+        segments: [
+          {
+            speaker: tr ? 'Sistem' : 'System',
+            timestamp: '00:00',
+            text: setupMsg,
+          },
+        ],
+      },
+    };
+  }
 
   const parcaliSatirlar =
     satirlar.length > 0
@@ -251,35 +338,28 @@ function uretYerelAkilliOzet(
           {
             timestamp: '00:10',
             text: tr
-              ? `${istek.title} konusunun teorik temelleri ve temel aksiyomları açıklandı.`
-              : `Theoretical foundations and core axioms of ${istek.title} are established.`,
+              ? `${istek.title} konusunda temel teorik çerçeve ve anahtar kavramlar ele alındı.`
+              : `Core theoretical framework and primary concepts for ${istek.title} were outlined.`,
           },
           {
             timestamp: '02:30',
             text: tr
-              ? 'Konunun pratik uygulama adımları, formül analizleri ve problem çözümleri incelendi.'
-              : 'Practical application steps, formula proofs, and case solutions were detailed.',
-          },
-          {
-            timestamp: '06:15',
-            text: tr
-              ? 'Sınavda çıkabilecek kritik soru kalıpları ve metodolojik adımlar özetlendi.'
-              : 'Exam-relevant problem patterns and analytical steps were synthesized.',
+              ? 'Uygulama örnekleri ve metodolojik adımlar karşılaştırmalı olarak incelendi.'
+              : 'Practical examples and methodological steps were reviewed comparatively.',
           },
         ];
 
   const oneLiner = tr
-    ? `"${istek.title}" dersinin temel teorik prensipleri, formülleri ve uygulama adımları akademik ders kitabı standardında derlendi.`
-    : `"${istek.title}" lecture core principles, analytical formulas, and methodologies structured in academic textbook prose.`;
+    ? `"${istek.title}" içeriğinden ${parcaliSatirlar.length} zaman damgalı bölüm ayıklanarak yerel metin motoruyla özetlendi.`
+    : `Extracted ${parcaliSatirlar.length} timestamped segments from "${istek.title}" using the local text analyzer.`;
 
   const bullets: ZamanliMadde[] = parcaliSatirlar.slice(0, 5).map((item) => ({
     timestamp: item.timestamp,
     text: item.text,
   }));
 
-  // Tarih/saat veya görev içeren satırları yakala
   const gorevSatirlari = parcaliSatirlar.filter((item) =>
-    /(sınav|teslim|ödev|cuma|pazartesi|saat|\d{1,2}:\d{2}|exam|due|deadline|project|meeting)/i.test(
+    /(sınav|teslim|ödev|cuma|pazartesi|çarşamba|perşembe|salı|saat|\d{1,2}:\d{2}|exam|due|deadline|project|meeting|homework)/i.test(
       item.text
     )
   );
@@ -294,70 +374,63 @@ function uretYerelAkilliOzet(
       : [
           {
             task: tr
-              ? `${istek.title} notlarını tekrar gözden geçir ve örnek soruları çöz.`
-              : `Review ${istek.title} notes and practice the sample questions.`,
+              ? `${istek.title} notlarını gözden geçir ve temel kavramları pekiştir.`
+              : `Review ${istek.title} notes and reinforce core concepts.`,
             due: tr ? 'Bu Hafta' : 'This Week',
             timestamp: parcaliSatirlar[0].timestamp,
           },
         ];
 
-  const detailedSections: DetayBolumu[] = [
-    {
-      heading: tr ? '1. Ana Konu ve Kapsam' : '1. Core Topic & Scope',
-      timestamp: parcaliSatirlar[0].timestamp,
-      summary: parcaliSatirlar
-        .slice(0, Math.ceil(parcaliSatirlar.length / 2))
-        .map((p) => p.text)
-        .join(' '),
-      keyPoints: parcaliSatirlar.slice(0, 3).map((p) => p.text),
-    },
-    {
-      heading: tr ? '2. Kritik Detaylar ve Uygulama' : '2. Critical Details & Application',
-      timestamp:
-        parcaliSatirlar[Math.min(1, parcaliSatirlar.length - 1)].timestamp,
-      summary: parcaliSatirlar
-        .slice(Math.floor(parcaliSatirlar.length / 2))
-        .map((p) => p.text)
-        .join(' '),
-      keyPoints: parcaliSatirlar.slice(-2).map((p) => p.text),
-    },
-  ];
+  // Divide lines dynamically into 1..3 balanced sections
+  const sectionCount = parcaliSatirlar.length >= 6 ? 3 : parcaliSatirlar.length >= 2 ? 2 : 1;
+  const chunkSize = Math.ceil(parcaliSatirlar.length / sectionCount);
+  const detailedSections: DetayBolumu[] = Array.from({ length: sectionCount }, (_, idx) => {
+    const slice = parcaliSatirlar.slice(idx * chunkSize, (idx + 1) * chunkSize);
+    const first = slice[0] || parcaliSatirlar[0];
+    return {
+      heading: tr
+        ? `${idx + 1}. Bölüm (${first.timestamp})`
+        : `Section ${idx + 1} (${first.timestamp})`,
+      timestamp: first.timestamp,
+      summary: slice.map((p) => p.text).join(' '),
+      keyPoints: slice.slice(0, 4).map((p) => p.text),
+    };
+  });
 
-  const concepts: KavramTanimi[] = [
-    {
-      term: istek.title.split('-')[0].trim() || (tr ? 'Temel Kavram' : 'Core Concept'),
-      definition: parcaliSatirlar[0].text,
-      timestamp: parcaliSatirlar[0].timestamp,
-    },
-    {
-      term: tr ? 'Uygulama Prensibi' : 'Application Principle',
-      definition:
-        parcaliSatirlar[Math.min(1, parcaliSatirlar.length - 1)].text,
-      timestamp:
-        parcaliSatirlar[Math.min(1, parcaliSatirlar.length - 1)].timestamp,
-    },
-  ];
+  // Extract concepts from colon/definition phrases or meaningful segments
+  const kavramSatirlari = parcaliSatirlar.filter((p) =>
+    /(:|nedir|olarak adlandırılır|diyoruz|tanımlanır|means|defined as|called)/i.test(p.text)
+  );
+  const conceptSources = kavramSatirlari.length > 0 ? kavramSatirlari : parcaliSatirlar;
 
-  const examQuestions: SinavSorusu[] = [
-    {
-      question: tr
-        ? `"${istek.title}" kapsamında vurgulanan en temel prensip ve amacı nedir?`
-        : `What is the primary principle and objective emphasized in "${istek.title}"?`,
-      answer: parcaliSatirlar[0].text,
-      difficulty: tr ? 'Orta' : 'Medium',
-      timestamp: parcaliSatirlar[0].timestamp,
-    },
-    {
-      question: tr
-        ? 'Anlatımda özellikle dikkat çekilen ikinci kritik nokta veya kural nedir?'
-        : 'What is the second critical point or rule highlighted in the recording?',
-      answer:
-        parcaliSatirlar[Math.min(1, parcaliSatirlar.length - 1)].text,
-      difficulty: tr ? 'Zor' : 'Hard',
-      timestamp:
-        parcaliSatirlar[Math.min(1, parcaliSatirlar.length - 1)].timestamp,
-    },
-  ];
+  const concepts: KavramTanimi[] = conceptSources.slice(0, 3).map((src, idx) => {
+    const colonParts = src.text.split(':');
+    const inferredTerm =
+      colonParts.length > 1 && colonParts[0].length < 50
+        ? colonParts[0].trim()
+        : src.text.split(/\s+/).slice(0, 3).join(' ').replace(/[.,;!?]+$/, '') ||
+          (tr ? `Kavram ${idx + 1}` : `Concept ${idx + 1}`);
+
+    return {
+      term: inferredTerm,
+      definition: colonParts.length > 1 ? colonParts.slice(1).join(':').trim() : src.text,
+      timestamp: src.timestamp,
+    };
+  });
+
+  const examQuestions: SinavSorusu[] = parcaliSatirlar.slice(0, 2).map((src, idx) => ({
+    question:
+      idx === 0
+        ? tr
+          ? `"${concepts[0]?.term || istek.title}" kapsamında vurgulanan temel kural veya mekanizma nedir?`
+          : `What is the primary rule or mechanism highlighted regarding "${concepts[0]?.term || istek.title}"?`
+        : tr
+          ? `[${src.timestamp}] bölümünde belirtilen kritik nokta veya uygulama detayı nedir?`
+          : `What critical point or practical detail is covered at [${src.timestamp}]?`,
+    answer: src.text,
+    difficulty: idx === 0 ? (tr ? 'Orta' : 'Medium') : tr ? 'Zor' : 'Hard',
+    timestamp: src.timestamp,
+  }));
 
   const segments: TranskriptSegmenti[] = parcaliSatirlar.map((p, i) => ({
     speaker: tr ? (i % 2 === 0 ? 'Anlatıcı' : 'Konuşmacı') : 'Speaker',

@@ -1,11 +1,9 @@
 /**
- * GİZLİ KÖPRÜ SUNUCU (BACKEND PROXY)
- * ----------------------------------
- * Bu sunucu:
- * 1. Senin Google AI Studio API anahtarını (.env dosyasından) gizli tutar, tarayıcıya sızdırmaz.
- * 2. Kullanıcı başına günlük ücretsiz 3 özet hakkını (Kota Kalkanı) kontrol eder.
- * 3. Hem Web Sitesinden hem de Chrome Eklentisinden gelen istekleri karşılar.
- * 4. Tüm işlemleri ve maliyetleri Geliştirici Log Paneline kaydeder.
+ * Notly API Proxy Server
+ * ----------------------
+ * Secure Node.js proxy protecting server-side GEMINI_API_KEY credentials,
+ * enforcing per-client daily free quotas, logging sanitized cost telemetry,
+ * and handling multimodal requests from both the Web PWA and Chrome Extension.
  */
 
 import http, { IncomingMessage, ServerResponse } from 'node:http';
@@ -17,13 +15,21 @@ import { Logger } from '../ortak/log';
 import { DailyQuotaManager } from '../ortak/tasarruf';
 import { uretAkilliOzet, OzetIstegi } from '../ortak/ozetleyici';
 
+const MAX_BODY_BYTES = 64 * 1024 * 1024; // 64 MB limit for long lecture audio payloads
+let lastEnvMtimeMs = -1;
+
 /**
- * .env dosyası varsa içindeki anahtarları okur
+ * Loads or reloads environment variables from `.env` when updated on disk.
  */
 function yukleEnvDosyasi(): void {
   try {
     const envPath = path.resolve(process.cwd(), '.env');
     if (!fs.existsSync(envPath)) return;
+
+    const stat = fs.statSync(envPath);
+    if (stat.mtimeMs === lastEnvMtimeMs) return;
+    lastEnvMtimeMs = stat.mtimeMs;
+
     const icerik = fs.readFileSync(envPath, 'utf-8');
     for (const satir of icerik.split('\n')) {
       const temiz = satir.trim();
@@ -32,16 +38,23 @@ function yukleEnvDosyasi(): void {
       if (esittirIdx === -1) continue;
       const anahtar = temiz.slice(0, esittirIdx).trim();
       const deger = temiz.slice(esittirIdx + 1).trim().replace(/^["']|["']$/g, '');
-      if (anahtar && !process.env[anahtar]) {
+      if (anahtar && deger) {
         process.env[anahtar] = deger;
       }
     }
   } catch {
-    // .env okunamazsa varsayılan ortam değişkenleriyle devam et
+    // Fall back to existing process.env values if .env cannot be read
   }
 }
 
 yukleEnvDosyasi();
+
+class PayloadTooLargeError extends Error {
+  constructor() {
+    super('Request payload exceeds maximum 64 MB limit.');
+    this.name = 'PayloadTooLargeError';
+  }
+}
 
 function gonderJson(res: ServerResponse, status: number, payload: unknown): void {
   res.writeHead(status, {
@@ -56,8 +69,24 @@ function gonderJson(res: ServerResponse, status: number, payload: unknown): void
 function okuIstekGovdesi(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const parcalar: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => parcalar.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(parcalar).toString('utf-8')));
+    let toplamBayt = 0;
+    let asildi = false;
+
+    req.on('data', (chunk: Buffer) => {
+      if (asildi) return;
+      toplamBayt += chunk.length;
+      if (toplamBayt > MAX_BODY_BYTES) {
+        asildi = true;
+        reject(new PayloadTooLargeError());
+        return;
+      }
+      parcalar.push(chunk);
+    });
+    req.on('end', () => {
+      if (!asildi) {
+        resolve(Buffer.concat(parcalar).toString('utf-8'));
+      }
+    });
     req.on('error', reject);
   });
 }
@@ -75,13 +104,16 @@ export function createNotlyServer() {
   const gunlukLimit = Number(process.env.DAILY_FREE_LIMIT || APP_CONFIG.dailyFreeLimit);
   const kotaYoneticisi = new DailyQuotaManager(gunlukLimit);
 
-  logger.info('SUNUCU', `${APP_CONFIG.appName} Gizli Köprü Sunucusu başlatıldı.`);
+  logger.info('SUNUCU', `${APP_CONFIG.appName} v${APP_CONFIG.version} Proxy Sunucusu başlatıldı.`);
 
   const server = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
       gonderJson(res, 200, { ok: true });
       return;
     }
+
+    // Pick up runtime .env changes without requiring a server restart
+    yukleEnvDosyasi();
 
     const url = new URL(req.url || '/', 'http://localhost');
     const clientId = alKullaniciKimligi(req);
@@ -97,8 +129,8 @@ export function createNotlyServer() {
         version: APP_CONFIG.version,
         liveGeminiConnected: hasLiveApiKey,
         modeLabel: hasLiveApiKey
-          ? 'Canlı Gemini API Aktif ($60 Kredi Korumalı)'
-          : 'Akıllı Yerel/Demo Motoru Aktif (.env içine GEMINI_API_KEY eklenince canlıya geçer)',
+          ? 'Canlı Gemini 2.5 Flash Aktif (API Anahtarı Korumalı)'
+          : 'Yerel Metin Analizi Modu (Ses/Video için GEMINI_API_KEY gerekli)',
         quota: {
           remaining: kotaYoneticisi.getRemaining(clientId),
           limit: gunlukLimit,
@@ -143,20 +175,40 @@ export function createNotlyServer() {
     if (req.method === 'POST' && url.pathname === '/api/settings/key') {
       try {
         const hamGovde = await okuIstekGovdesi(req);
-        const { apiKey } = JSON.parse(hamGovde);
-        if (typeof apiKey === 'string' && apiKey.trim().length > 10) {
-          process.env.GEMINI_API_KEY = apiKey.trim();
-          const envPath = path.resolve(process.cwd(), '.env');
-          fs.writeFileSync(envPath, `GEMINI_API_KEY=${apiKey.trim()}\nPORT=5173\n`);
-          logger.info('AYAR', 'Gemini API anahtarı kaydedildi ve canlı mod aktif edildi.');
-          gonderJson(res, 200, { ok: true, message: 'Canlı Gemini 2.5 Flash aktif!' });
-          return;
-        } else {
-          gonderJson(res, 400, { ok: false, message: 'Geçersiz API anahtarı formatı.' });
+        const { apiKey } = JSON.parse(hamGovde) as { apiKey?: unknown };
+        const temizAnahtar = typeof apiKey === 'string' ? apiKey.trim() : '';
+
+        if (!temizAnahtar.startsWith('AIza') || temizAnahtar.length < 20) {
+          gonderJson(res, 400, {
+            ok: false,
+            message: 'Geçersiz API anahtarı formatı. Google AI Studio anahtarı "AIza" ile başlamalı ve en az 20 karakter olmalıdır.',
+          });
           return;
         }
+
+        process.env.GEMINI_API_KEY = temizAnahtar;
+        const envPath = path.resolve(process.cwd(), '.env');
+        let mevcutSatirlar: string[] = [];
+        if (fs.existsSync(envPath)) {
+          mevcutSatirlar = fs
+            .readFileSync(envPath, 'utf-8')
+            .split('\n')
+            .filter((s) => !s.trim().startsWith('GEMINI_API_KEY='));
+        }
+        const guncelIcerik = [
+          `GEMINI_API_KEY=${temizAnahtar}`,
+          ...mevcutSatirlar.map((s) => s.trimEnd()).filter(Boolean),
+          ...(mevcutSatirlar.some((s) => s.trim().startsWith('PORT=')) ? [] : ['PORT=5173']),
+        ].join('\n') + '\n';
+
+        fs.writeFileSync(envPath, guncelIcerik, 'utf-8');
+        lastEnvMtimeMs = fs.statSync(envPath).mtimeMs;
+        logger.info('AYAR', 'Gemini API anahtarı yapılandırıldı ve canlı model etkinleştirildi.');
+        gonderJson(res, 200, { ok: true, message: 'Canlı Gemini 2.5 Flash aktif!' });
+        return;
       } catch (err) {
-        gonderJson(res, 500, { ok: false, error: String(err) });
+        const status = err instanceof PayloadTooLargeError ? 413 : 400;
+        gonderJson(res, status, { ok: false, error: err instanceof Error ? err.message : String(err) });
         return;
       }
     }
@@ -170,7 +222,7 @@ export function createNotlyServer() {
           gonderJson(res, 429, {
             error: 'QUOTA_EXCEEDED',
             message:
-              'Günlük ücretsiz 3 özet hakkın doldu. Geliştirici panelinden test için kotayı sıfırlayabilirsin.',
+              'Günlük ücretsiz 3 özet hakkı doldu. Geliştirici panelinden test için kotayı sıfırlayabilirsiniz.',
             quota: kotaDurumu,
           });
           return;
@@ -193,10 +245,11 @@ export function createNotlyServer() {
           stats: logger.getStats(),
         });
       } catch (hata) {
+        const isTooLarge = hata instanceof PayloadTooLargeError;
         const mesaj = hata instanceof Error ? hata.message : String(hata);
         logger.error('SUNUCU_HATA', `Özetleme sırasında hata: ${mesaj}`);
-        gonderJson(res, 500, {
-          error: 'INTERNAL_ERROR',
+        gonderJson(res, isTooLarge ? 413 : 500, {
+          error: isTooLarge ? 'PAYLOAD_TOO_LARGE' : 'INTERNAL_ERROR',
           message: mesaj,
         });
       }
@@ -209,7 +262,6 @@ export function createNotlyServer() {
   return server;
 }
 
-// Eğer bu dosya doğrudan çalıştırıldıysa (npm run dev:server) portu dinle
 const isDirectRun =
   process.argv[1] &&
   path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
@@ -218,7 +270,7 @@ if (isDirectRun) {
   const port = Number(process.env.PORT || 8787);
   const srv = createNotlyServer();
   srv.listen(port, () => {
-    console.log(`\n🚀 [${APP_CONFIG.appName}] Gizli Köprü Sunucu çalışıyor: http://localhost:${port}`);
-    console.log(`🛡️  Sağlık ve Kota Kontrolü: http://localhost:${port}/api/health\n`);
+    console.log(`\n🚀 [${APP_CONFIG.appName}] API Proxy Server running at http://localhost:${port}`);
+    console.log(`🛡️  Health & Quota endpoint: http://localhost:${port}/api/health\n`);
   });
 }

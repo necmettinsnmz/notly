@@ -1,13 +1,18 @@
-# Gizli anahtarlar (ASLA GitHub'a yuklenmez!)
+# Environment variables
 .env
-.env.local
+.env.*
+!.env.example
 
-# Yuklenen paketler ve derleme ciktilari
+# Dependencies & Build outputs
 node_modules/
 dist/
 .vite/
+coverage/
 
-# Isletim sistemi ve editör dosyalari
+# Analysis & Tooling caches
+graphify-out/
+
+# OS & Editor files
 .DS_Store
 Thumbs.db
 *.log

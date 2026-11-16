@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Notly — Akıllı Ders Dinleyici & Sınav Notu",
-  "version": "0.1.1",
-  "description": "Canlı dersleri (Moodle, Zoom, Teams, YouTube) dinler, slaytları otomatik yakalar ve sınav notu çıkarır.",
+  "version": "1.0.0",
+  "description": "Canlı dersleri (Moodle, Zoom, Teams, YouTube) dinler, slaytları yakalar ve 4 modlu sınav notu çıkarır.",
   "permissions": [
     "tabs",
     "tabCapture",

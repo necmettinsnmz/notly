@@ -53,6 +53,14 @@ function showStatus(text, type = 'info') {
   }
 }
 
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // 1. Sunucu ve Canlı Gemini API Kontrolü
 async function checkServerHealth() {
   const pill = document.getElementById('server-status');
@@ -72,11 +80,11 @@ async function checkServerHealth() {
           if (data.liveGeminiConnected) {
             apiBadge.textContent = '🟢 Gemini 2.5 Flash';
             apiBadge.className = 'api-pill live';
-            apiBadge.title = 'Canlı yapay zeka bağlı, sesler eksiksiz dinleniyor.';
+            apiBadge.title = 'Canlı yapay zeka bağlı. Anahtarı değiştirmek için tıklayın.';
           } else {
-            apiBadge.textContent = '⚠️ Demo Modu';
+            apiBadge.textContent = '🔑 API Ayarla';
             apiBadge.className = 'api-pill';
-            apiBadge.title = 'Canlı ders analizi için .env içine GEMINI_API_KEY ekleyin.';
+            apiBadge.title = 'Canlı ses analizi için GEMINI_API_KEY girmek üzere tıklayın.';
           }
         }
         return;
@@ -94,6 +102,44 @@ async function checkServerHealth() {
 
 setInterval(checkServerHealth, 3500);
 checkServerHealth();
+
+// 1.1 Eklenti İçi API Anahtarı Ayar Kutusu
+document.getElementById('api-status-badge')?.addEventListener('click', () => {
+  const box = document.getElementById('api-settings-box');
+  if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+});
+
+document.getElementById('ext-btn-save-key')?.addEventListener('click', async () => {
+  const input = document.getElementById('ext-api-key-input');
+  const key = input && 'value' in input ? String(input.value).trim() : '';
+  if (!key) {
+    showStatus('⚠️ Lütfen geçerli bir GEMINI_API_KEY (AIza...) girin.', 'error');
+    return;
+  }
+
+  const serverUrl = activeServerUrl || 'http://localhost:5173';
+  try {
+    const res = await fetch(`${serverUrl}/api/settings/key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: key }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      showStatus(`⚠️ ${data.message || data.error || 'Anahtar kaydedilemedi.'}`, 'error');
+      return;
+    }
+
+    if (input && 'value' in input) input.value = '';
+    const box = document.getElementById('api-settings-box');
+    if (box) box.style.display = 'none';
+    await checkServerHealth();
+    showStatus('✅ GEMINI_API_KEY kaydedildi ve canlı yapay zeka aktif edildi!', 'success');
+  } catch {
+    showStatus('⚠️ Yerel sunucuya bağlanılamadı (npm run dev çalıştığından emin olun).', 'error');
+  }
+});
 
 // 2. Kompakt Görünüm / Mini Bar Yönetimi
 function setCompactMode(isCompact) {
@@ -491,10 +537,10 @@ function renderSummaryWithTabs(summary) {
   out.innerHTML = `
     <div class="result-card">
       <div style="font-size: 1.05rem; font-weight: 750; margin-bottom: 4px;">
-        🎓 ${summary.title}
+        🎓 ${escapeHtml(summary.title)}
       </div>
       <div style="font-size: 0.72rem; color: var(--success); font-family: var(--font-mono); margin-bottom: 8px;">
-        ⚡ ${durationMin} dk süre | ${summary.slides?.length || 0} slayt incelendi | ${summary.usedLiveApi ? '🟢 Canlı Gemini 2.5 Flash' : '⚠️ Taslak Motor'}
+        ⚡ ${durationMin} dk süre | ${summary.slides?.length || 0} slayt incelendi | ${summary.usedLiveApi ? '🟢 Canlı Gemini 2.5 Flash' : 'ℹ️ Yerel Analiz Modu'}
       </div>
 
       <!-- 4 MODLU SEKMELER -->
@@ -509,12 +555,12 @@ function renderSummaryWithTabs(summary) {
       <div id="panel-quick" class="tab-panel active">
         <div style="padding: 10px 12px; background: var(--surface-inset); border-radius: 6px; font-size: 0.84rem; margin-bottom: 10px; border-left: 3px solid var(--accent);">
           <strong>📖 Dersin Özü:</strong>
-          <p style="margin-top: 4px; color: var(--text-primary);">${summary.quick?.oneLiner || ''}</p>
+          <p style="margin-top: 4px; color: var(--text-primary);">${escapeHtml(summary.quick?.oneLiner)}</p>
         </div>
 
         <h4 style="font-size: 0.82rem; margin: 8px 0 4px;">Kritik Maddeler:</h4>
         <ul style="padding-left: 1.1rem; font-size: 0.8rem; margin-bottom: 12px;">
-          ${(summary.quick?.bullets || []).map((b) => `<li style="margin-bottom: 4px;"><span class="ts">${b.timestamp}</span> ${b.text}</li>`).join('')}
+          ${(summary.quick?.bullets || []).map((b) => `<li style="margin-bottom: 4px;"><span class="ts">${escapeHtml(b.timestamp)}</span> ${escapeHtml(b.text)}</li>`).join('')}
         </ul>
 
         ${
@@ -526,8 +572,8 @@ function renderSummaryWithTabs(summary) {
               .map(
                 (a) => `
               <div style="padding: 6px 8px; background: var(--surface-inset); border-radius: 5px; border-left: 3px solid var(--warning); font-size: 0.78rem;">
-                <span class="ts">${a.timestamp}</span> <strong>${a.task}</strong>
-                ${a.due ? `<span style="color: var(--warning); margin-left: 4px;">[${a.due}]</span>` : ''}
+                <span class="ts">${escapeHtml(a.timestamp)}</span> <strong>${escapeHtml(a.task)}</strong>
+                ${a.due ? `<span style="color: var(--warning); margin-left: 4px;">[${escapeHtml(a.due)}]</span>` : ''}
               </div>`
               )
               .join('')}
@@ -544,11 +590,11 @@ function renderSummaryWithTabs(summary) {
               (sec) => `
             <div style="padding: 8px 10px; background: var(--surface-inset); border-radius: 6px; border: 1px solid var(--border-subtle);">
               <div style="font-weight: 700; font-size: 0.84rem; margin-bottom: 4px;">
-                <span class="ts">${sec.timestamp}</span> ${sec.heading}
+                <span class="ts">${escapeHtml(sec.timestamp)}</span> ${escapeHtml(sec.heading)}
               </div>
-              <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; line-height: 1.4;">${sec.summary}</p>
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; line-height: 1.4;">${escapeHtml(sec.summary)}</p>
               <ul style="padding-left: 1rem; font-size: 0.78rem; color: var(--text-primary);">
-                ${sec.keyPoints.map((kp) => `<li style="margin-bottom: 2px;">${kp}</li>`).join('')}
+                ${sec.keyPoints.map((kp) => `<li style="margin-bottom: 2px;">${escapeHtml(kp)}</li>`).join('')}
               </ul>
             </div>`
             )
@@ -564,10 +610,10 @@ function renderSummaryWithTabs(summary) {
               (q) => `
             <div class="exam-box">
               <div style="font-weight: 600; font-size: 0.82rem; margin-bottom: 4px;">
-                <span class="ts" style="background: rgba(245, 158, 11, 0.15); color: var(--warning);">${q.difficulty}</span> ❓ ${q.question}
+                <span class="ts" style="background: rgba(245, 158, 11, 0.15); color: var(--warning);">${escapeHtml(q.difficulty)}</span> ❓ ${escapeHtml(q.question)}
               </div>
               <div style="color: var(--success); font-size: 0.78rem;">
-                ✅ <strong>Cevap:</strong> ${q.answer}
+                ✅ <strong>Cevap:</strong> ${escapeHtml(q.answer)}
               </div>
             </div>`
             )
@@ -584,9 +630,9 @@ function renderSummaryWithTabs(summary) {
                   .map(
                     (t) => `
                 <div class="transcript-row">
-                  <span class="ts">${t.timestamp}</span>
-                  <strong style="color: var(--accent); margin-right: 4px;">${t.speaker}:</strong>
-                  <span>${t.text}</span>
+                  <span class="ts">${escapeHtml(t.timestamp)}</span>
+                  <strong style="color: var(--accent); margin-right: 4px;">${escapeHtml(t.speaker)}:</strong>
+                  <span>${escapeHtml(t.text)}</span>
                 </div>`
                   )
                   .join('')
@@ -596,9 +642,10 @@ function renderSummaryWithTabs(summary) {
       </div>
 
       <!-- ALT AKSİYON BUTONLARI -->
-      <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border-subtle); display: flex; gap: 6px;">
-        <button class="btn" id="btn-copy-all" style="font-size: 0.76rem; margin-bottom: 0;">📋 Notları Kopyala</button>
-        <button class="btn" id="btn-download-md" style="font-size: 0.76rem; margin-bottom: 0;">📄 .md İndir</button>
+      <div class="summary-actions-bar" style="margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border-subtle); display: flex; gap: 6px;">
+        <button class="btn" id="btn-copy-all" style="font-size: 0.74rem; margin-bottom: 0;">📋 Kopyala</button>
+        <button class="btn" id="btn-download-md" style="font-size: 0.74rem; margin-bottom: 0;">📄 .md</button>
+        <button class="btn" id="btn-print-pdf" style="font-size: 0.74rem; margin-bottom: 0;">🖨️ PDF</button>
       </div>
     </div>
   `;
@@ -636,5 +683,10 @@ function renderSummaryWithTabs(summary) {
     a.click();
     URL.revokeObjectURL(url);
     showStatus('Ders notu .md olarak indirildi!', 'success');
+  });
+
+  // PDF Yazdır / Kaydet Butonu
+  document.getElementById('btn-print-pdf')?.addEventListener('click', () => {
+    window.print();
   });
 }

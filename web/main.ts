@@ -1,9 +1,7 @@
 /**
- * NOTLY — ANA WEB UYGULAMASI (TR / EN ÇİFT DİLLİ)
- * -----------------------------------------------
- * Kullanıcının hiçbir API anahtarı girmeden ses, video veya ders altyazısını
- * 4 farklı modda özetlediği, zaman damgalarına tıklayarak kayıtta gezindiği
- * ve senin Geliştirici Panelinden tüm logları/maliyetleri izlediğin ekran.
+ * Notly Web Application (Bilingual TR / EN)
+ * Provides zero-config audio/video/caption upload, microphone recording,
+ * 4-mode summary inspection with clickable timestamps, and the Developer Cost & API Console.
  */
 
 import { APP_CONFIG, DilKodu, OzetModu, TasarrufYontemi, t } from '../ortak/ayarlar';
@@ -41,7 +39,9 @@ interface UygulamaDurumu {
   proModalAcik: boolean;
   coffeeModalAcik: boolean;
   kayitYapiliyor: boolean;
+  apiAnahtariGirdisi: string;
   sunucuDurumu: {
+    liveGeminiConnected: boolean;
     modeLabel: string;
     stats: {
       totalRequests: number;
@@ -115,7 +115,9 @@ const state: UygulamaDurumu = {
   proModalAcik: false,
   coffeeModalAcik: false,
   kayitYapiliyor: false,
+  apiAnahtariGirdisi: '',
   sunucuDurumu: {
+    liveGeminiConnected: false,
     modeLabel: 'Yükleniyor...',
     stats: {
       totalRequests: 0,
@@ -148,6 +150,7 @@ async function yenileSunucuVeLoglar(): Promise<void> {
       const h = await healthRes.json();
       state.kalanKota = h.quota.remaining;
       state.kotaLimiti = h.quota.limit;
+      state.sunucuDurumu.liveGeminiConnected = Boolean(h.liveGeminiConnected);
       state.sunucuDurumu.modeLabel = h.modeLabel;
       state.sunucuDurumu.stats = h.stats;
     }
@@ -277,9 +280,51 @@ async function sifirlaGunlukKota(): Promise<void> {
   await yenileSunucuVeLoglar();
   gosterBildirim(
     state.dil === 'tr'
-      ? '✅ Günlük ücretsiz kullanım hakkın tekrar 3/3 olarak sıfırlandı!'
+      ? '✅ Günlük ücretsiz kullanım hakkı tekrar 3/3 olarak sıfırlandı.'
       : '✅ Daily free quota reset to 3/3!'
   );
+}
+
+async function kaydetGeminiApiAnahtari(): Promise<void> {
+  const anahtar = state.apiAnahtariGirdisi.trim();
+  if (!anahtar) {
+    state.hataMesaji =
+      state.dil === 'tr'
+        ? 'Lütfen geçerli bir Google AI Studio API anahtarı (AIza...) girin.'
+        : 'Please enter a valid Google AI Studio API key (AIza...).';
+    render();
+    return;
+  }
+
+  state.hataMesaji = null;
+  try {
+    const res = await fetch('/api/settings/key', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Id': alTarayiciKimligi(),
+      },
+      body: JSON.stringify({ apiKey: anahtar }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      state.hataMesaji = data.message || data.error || 'API anahtarı kaydedilemedi.';
+      render();
+      return;
+    }
+
+    state.apiAnahtariGirdisi = '';
+    await yenileSunucuVeLoglar();
+    gosterBildirim(
+      state.dil === 'tr'
+        ? '✅ GEMINI_API_KEY .env dosyasına kaydedildi ve canlı model etkinleştirildi!'
+        : '✅ GEMINI_API_KEY saved to .env and live Gemini 2.5 Flash enabled!'
+    );
+  } catch (err) {
+    state.hataMesaji = err instanceof Error ? err.message : 'Sunucu bağlantı hatası';
+    render();
+  }
 }
 
 function escapeHtml(str: string): string {
@@ -477,12 +522,17 @@ function render(): void {
               <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0.4rem 0 0.8rem;">
                 ${t(state.dil, 'proModalSubtitle')}
               </p>
+              <ul style="font-size: 0.84rem; color: var(--text-primary); margin: 0 0 0.9rem 1.15rem; line-height: 1.55;">
+                <li>${tr ? 'Sınırsız günlük canlı ders ve ses dosyası analizi' : 'Unlimited daily live lecture & audio file summaries'}</li>
+                <li>${tr ? '2–3 saatlik kesintisiz ders kaydı ve slayt birleştirme' : 'Multi-hour continuous recording & multimodal slide fusion'}</li>
+                <li>${tr ? 'Öncelikli Gemini 2.5 Flash işleme ve tam PDF dışa aktarım' : 'Priority Gemini 2.5 Flash pipeline & full PDF/Markdown export'}</li>
+              </ul>
               <div class="badge badge-accent" style="font-size: 0.9rem; padding: 0.4rem 0.8rem; margin-bottom: 1rem;">
                 💳 ${t(state.dil, 'proPriceText')}
               </div>
               <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
-                <button class="btn btn-primary" onclick="alert('${tr ? 'Lemon Squeezy / Shopier ödeme akışı buraya bağlanır. Şirket kurmadan, anında kredi kartıyla tahsilat yapabilirsin!' : 'Connects to Lemon Squeezy / Shopier checkout.'}')">
-                  🚀 ${tr ? 'Hemen Abone Ol (Lemon Squeezy / Shopier)' : 'Subscribe Now'}
+                <button class="btn btn-primary" id="btn-pro-checkout">
+                  🚀 ${tr ? 'Self-Hosted / Açık Kaynak Modunda Ücretsiz Kullan' : 'Free in Self-Hosted / Local Mode'}
                 </button>
                 <button class="btn" id="btn-close-pro">${tr ? 'Kapat' : 'Close'}</button>
               </div>
@@ -534,9 +584,34 @@ function render(): void {
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.8rem; margin-bottom: 1rem;">
             <div>
               <h2 style="font-size: 1.15rem;">🛠️ ${tr ? 'Canlı Sistem Logları & $60 Kredi Takip Paneli' : 'Live System Logs & $60 Credit Tracker'}</h2>
-              <p style="font-size: 0.83rem; color: var(--text-muted);">${escapeHtml(state.sunucuDurumu.modeLabel)}</p>
+              <p style="font-size: 0.83rem; color: var(--text-muted);">
+                ${state.sunucuDurumu.liveGeminiConnected ? '🟢' : '⚠️'} ${escapeHtml(state.sunucuDurumu.modeLabel)}
+              </p>
             </div>
             <button class="btn" id="btn-reset-quota">🔄 ${tr ? 'Test İçin Günlük Kotayı Sıfırla (3/3 Yap)' : 'Reset Daily Quota (3/3)'}</button>
+          </div>
+
+          <div class="stat-box" style="margin-bottom: 1rem; border-color: ${state.sunucuDurumu.liveGeminiConnected ? 'rgba(16, 185, 129, 0.35)' : 'var(--border-strong)'};">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <strong style="font-size: 0.88rem;">🔑 ${tr ? 'Gemini API Anahtarı Yapılandırması (.env)' : 'Gemini API Key Configuration (.env)'}</strong>
+              <span class="badge ${state.sunucuDurumu.liveGeminiConnected ? 'badge-success' : ''}">
+                ${state.sunucuDurumu.liveGeminiConnected ? (tr ? 'Bağlı' : 'Connected') : (tr ? 'Yapılandırılmadı' : 'Not Configured')}
+              </span>
+            </div>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.6rem;">
+              ${tr ? 'Google AI Studio anahtarınızı buradan kaydedebilirsiniz; anahtar yalnızca yerel .env dosyasına yazılır ve tarayıcıya geri gönderilmez.' : 'Save your Google AI Studio key here; it is stored strictly server-side in .env and never exposed to clients.'}
+            </p>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <input
+                type="password"
+                class="input"
+                id="input-api-key"
+                style="flex: 1; min-width: 220px;"
+                placeholder="AIzaSy..."
+                value="${escapeHtml(state.apiAnahtariGirdisi)}"
+              />
+              <button class="btn btn-primary" id="btn-save-api-key">💾 ${tr ? 'Kaydet ve Aktifleştir' : 'Save & Activate'}</button>
+            </div>
           </div>
 
           <div class="stats-grid">
@@ -767,6 +842,25 @@ function baglaOlayDinleyicileri(): void {
     sifirlaGunlukKota();
   });
 
+  document.getElementById('input-api-key')?.addEventListener('input', (e) => {
+    state.apiAnahtariGirdisi = (e.target as HTMLInputElement).value;
+  });
+
+  document.getElementById('btn-save-api-key')?.addEventListener('click', () => {
+    kaydetGeminiApiAnahtari();
+  });
+
+  document.getElementById('btn-pro-checkout')?.addEventListener('click', () => {
+    state.proModalAcik = false;
+    state.devPanelAcik = true;
+    render();
+    gosterBildirim(
+      state.dil === 'tr'
+        ? '💡 Yerel kurulumda günlük limiti .env üzerinden DAILY_FREE_LIMIT ile yönetebilirsiniz.'
+        : '💡 In self-hosted mode, customize limits via DAILY_FREE_LIMIT in .env.'
+    );
+  });
+
   document.getElementById('btn-demo-lecture')?.addEventListener('click', () => {
     yukleOrnekDers();
     calistirOzetleme();
@@ -946,8 +1040,8 @@ function isleSecilenDosya(file: File): void {
   state.sureSaniye = Math.max(60, Math.round(file.size / 16000));
   state.yontem = state.sikistirmaAktif ? 'compressed_audio' : 'raw_audio';
 
-  // Küçük ses dosyalarını (< 8 MB) base64 olarak da hazırla
-  if (file.size < 8 * 1024 * 1024) {
+  // Prepare audio/video files up to 50 MB as Base64 for multimodal Gemini inference
+  if (file.size <= 50 * 1024 * 1024) {
     const reader = new FileReader();
     reader.onload = () => {
       const result = String(reader.result || '');
@@ -956,6 +1050,14 @@ function isleSecilenDosya(file: File): void {
       state.medyaMimeType = file.type || 'audio/webm';
     };
     reader.readAsDataURL(file);
+  } else {
+    state.medyaBase64 = null;
+    state.medyaMimeType = null;
+    gosterBildirim(
+      state.dil === 'tr'
+        ? '⚠️ Dosya 50 MB sınırını aşıyor. Ses yerine altyazı (.vtt/.srt) yükleyebilirsiniz.'
+        : '⚠️ File exceeds the 50 MB limit. Upload .vtt/.srt captions or compress the audio first.'
+    );
   }
 
   gosterBildirim(
